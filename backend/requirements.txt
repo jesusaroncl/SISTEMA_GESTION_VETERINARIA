@@ -1,0 +1,8 @@
+Flask
+Flask-SQLAlchemy
+psycopg2-binary  # Conector de PostgreSQL
+Flask-Migrate    # Para manejar migraciones de BD
+Flask-Bcrypt     # Para hashear contraseñas
+Flask-JWT-Extended # Para tokens de autenticación
+python-dotenv    # Para manejar variables de entorno (como la URL de la DB)
+Flask-CORS       # Para manejar peticiones desde el frontend de Next.js

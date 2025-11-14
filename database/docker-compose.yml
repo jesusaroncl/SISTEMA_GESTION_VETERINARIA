@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  db:
+    # Usa una imagen oficial de PostgreSQL 
+    image: postgres:15-alpine 
+    container_name: veterinaria_db_container
+    
+    # Variables de entorno que PostgreSQL usará para crear la base de datos y el usuario inicial
+    environment:
+      POSTGRES_USER: postgres       # Coincide con tu cadena de conexión (-U postgres)
+      POSTGRES_PASSWORD: admin      # Coincide con tu cadena de conexión (admin)
+      POSTGRES_DB: veterinaria_db   # Coincide con tu cadena de conexión (veterinaria_db)
+    
+    # Mapea el puerto 5432 del contenedor al puerto 5432 de tu máquina local
+    ports:
+      - "5432:5432"
+      
+    # Volumen para que los datos persistan incluso si detienes/inicias el contenedor
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+      # Monta tu archivo schema.sql para inicializar la BD con la estructura
+      # La carpeta /docker-entrypoint-initdb.d/ es un punto especial de inicialización de Postgres
+      - ./schema.sql:/docker-entrypoint-initdb.d/schema.sql 
+    
+volumes:
+  postgres_data:
+
+
+
+
+
+
+
+
+  #INICIALIZAR
+  #docker compose up -d
