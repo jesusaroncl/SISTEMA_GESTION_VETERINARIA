@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { VetOwnersTable } from "@/components/vet-owners-table"
-import { VetDogsView } from "@/components/vet-dogs-view"
+// import { VetOwnersTable } from "@/components/vet-owners-table" // Ya no se usa
+import { OwnersTable } from "@/components/owners-table" // Se usa la refactorizada
+import { VetDogsView } from "@/components/vet-dogs-view" // Se usa la refactorizada
 import { EvaluationsView } from "@/components/evaluations-view"
 import { DataUploadForm } from "@/components/data-upload-form"
 import { NewEvaluationForm } from "@/components/new-evaluation-form"
@@ -12,6 +13,7 @@ import { Button } from "@/components/ui/button"
 import { LogOut, Home } from "lucide-react"
 import type { Owner, Dog, Evaluation, EvaluationData, UploadedData } from "@/lib/types"
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL
 
 export default function VeterinarioPage() {
   const router = useRouter()
@@ -22,6 +24,7 @@ export default function VeterinarioPage() {
   const [uploadedData, setUploadedData] = useState<UploadedData | null>(null)
   const [evaluationData, setEvaluationData] = useState<EvaluationData | null>(null)
   const [evaluationResult, setEvaluationResult] = useState<Evaluation | null>(null)
+  const [isProcessing, setIsProcessing] = useState(false) 
 
   useEffect(() => {
     const userRole = localStorage.getItem("userRole")
@@ -35,9 +38,14 @@ export default function VeterinarioPage() {
     setUsername(storedUsername || "")
   }, [router])
 
+  const getAuthToken = () => {
+    return typeof window !== "undefined" ? localStorage.getItem("access_token") : null
+  }
+
   const handleLogout = () => {
     localStorage.removeItem("userRole")
     localStorage.removeItem("username")
+    localStorage.removeItem("access_token")
     router.push("/")
   }
 
@@ -64,29 +72,72 @@ export default function VeterinarioPage() {
     setView("upload")
   }
 
-  const handleDataUploaded = (data: UploadedData) => {
-    setUploadedData(data)
-    const mockEvaluationData: EvaluationData = {
-      raza: selectedDog?.raza || "",
-      edad: selectedDog ? calculateAge(selectedDog.fechaNacimiento) : 0,
-      soploCardiaco: "Grado II/VI",
-      esRiesgo: false,
-      datosResultado: "soplo cardiaco leve, sin signos de insuficiencia cardiaca",
+  const handleDataUploaded = async (data: UploadedData) => {
+    if (!data.soploCardiaco || !selectedDog) {
+        alert("No se seleccionó ningún archivo o perro.")
+        return
     }
-    setEvaluationData(mockEvaluationData)
-    setView("new-evaluation")
+
+    setIsProcessing(true)
+    const token = getAuthToken()
+    const formData = new FormData()
+    formData.append("soplo_cardiaco", data.soploCardiaco)
+
+    try {
+        const response = await fetch(
+            `${API_BASE_URL}/api/dogs/${selectedDog.id}/evaluate_audio`, 
+            {
+                method: "POST",
+                headers: { "Authorization": `Bearer ${token}` },
+                body: formData,
+            }
+        )
+        const resultData = await response.json()
+        if (!response.ok) throw new Error(resultData.msg || "Error en el servidor de ML")
+
+        setEvaluationData(resultData as EvaluationData)
+        setView("new-evaluation")
+
+    } catch (e) {
+        alert(e instanceof Error ? e.message : "Error al procesar el audio.")
+    } finally {
+        setIsProcessing(false)
+    }
   }
 
-  const handleEvaluate = (data: EvaluationData) => {
-    const mockResult: Evaluation = {
-      id: `EV${Date.now()}`,
-      dogId: selectedDog?.id || "",
-      fecha: new Date().toISOString().split("T")[0],
-      resultado: data.esRiesgo ? "Alto Riesgo" : "Riesgo Moderado",
-      comentarios: `Paciente de ${data.edad} años, raza ${data.raza}. ${data.soploCardiaco}. ${data.datosResultado}. ${data.esRiesgo ? "Se recomienda seguimiento inmediato." : "Continuar con monitoreo regular."}`,
+  const handleEvaluate = async (data: EvaluationData) => {
+    if (!selectedDog) {
+        alert("Error: No hay un perro seleccionado.");
+        return;
     }
-    setEvaluationResult(mockResult)
-    setView("result")
+    const token = getAuthToken();
+    if (!token) {
+        alert("Error de autenticación.");
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/evaluations`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+                dogId: selectedDog.id,
+                evaluationData: data
+            })
+        });
+
+        const savedEvaluation = await response.json();
+        if (!response.ok) throw new Error(savedEvaluation.msg || "Error al guardar la evaluación.");
+
+        setEvaluationResult(savedEvaluation as Evaluation);
+        setView("result");
+
+    } catch (e) {
+        alert(e instanceof Error ? e.message : "Error de conexión.");
+    }
   }
 
   const handleBackToOwners = () => {
@@ -113,6 +164,7 @@ export default function VeterinarioPage() {
     setView("evaluations")
   }
 
+  // calculateAge no es necesario en esta página, pero lo dejamos por si acaso.
   const calculateAge = (birthDate: string) => {
     const today = new Date()
     const birth = new Date(birthDate)
@@ -153,24 +205,55 @@ export default function VeterinarioPage() {
       </div>
 
       <div className="container mx-auto py-8 px-4">
-        {view === "owners" && <VetOwnersTable onViewDogs={handleViewDogs} />}
+        {view === "owners" && (
+            <OwnersTable
+                role="veterinario" 
+                onViewDogs={handleViewDogs}
+                onNewOwner={() => {}} // No usado por el veterinario
+                onEditOwner={() => {}} // No usado por el veterinario
+            />
+        )}
 
         {view === "dogs" && selectedOwner && (
-          <VetDogsView owner={selectedOwner} onBack={handleBackToOwners} onViewEvaluations={handleViewEvaluations} />
+          <VetDogsView 
+            owner={selectedOwner} 
+            onBack={handleBackToOwners} 
+            onViewEvaluations={handleViewEvaluations} 
+          />
         )}
 
         {view === "evaluations" && selectedDog && (
-          <EvaluationsView dog={selectedDog} onBack={handleBackToDogs} onNewEvaluation={handleNewEvaluation} />
+          <EvaluationsView 
+            dog={selectedDog} 
+            onBack={handleBackToDogs} 
+            onNewEvaluation={handleNewEvaluation} 
+          />
         )}
 
-        {view === "upload" && <DataUploadForm onBack={handleBackToEvaluations} onProcess={handleDataUploaded} />}
+        {view === "upload" && (
+            isProcessing ? (
+                <div className="text-center p-8">
+                    <p className="text-lg font-semibold">Procesando audio...</p>
+                    <p>El modelo de IA está analizando el soplo cardiaco. Esto puede tardar un momento.</p>
+                </div>
+            ) : (
+                <DataUploadForm onBack={handleBackToEvaluations} onProcess={handleDataUploaded} />
+            )
+        )}
 
         {view === "new-evaluation" && evaluationData && (
-          <NewEvaluationForm data={evaluationData} onBack={handleBackToEvaluations} onEvaluate={handleEvaluate} />
+          <NewEvaluationForm 
+            data={evaluationData} 
+            onBack={handleBackToEvaluations} 
+            onEvaluate={handleEvaluate} 
+          />
         )}
 
         {view === "result" && evaluationResult && (
-          <EvaluationResult evaluation={evaluationResult} onFinish={handleBackToEvaluations} />
+          <EvaluationResult 
+            evaluation={evaluationResult} 
+            onFinish={handleBackToEvaluations} 
+          />
         )}
       </div>
     </main>

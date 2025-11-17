@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -11,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ArrowLeft, Save } from "lucide-react"
 import type { Owner } from "@/lib/types"
 
-const API_BASE_URL = "http://127.0.0.1:5000" //modificar con tu backend
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL
 
 type OwnerFormProps = {
   owner: Owner | null
@@ -28,10 +27,10 @@ export function OwnerForm({ owner, onBack, onSave }: OwnerFormProps) {
     correo: owner?.correo || "",
     direccion: owner?.direccion || "",
     sexo: owner?.sexo || "Masculino",
-    fechaNacimiento: owner?.fechaNacimiento || "",
+    fechaNacimiento: owner?.fechaNacimiento ? owner.fechaNacimiento.split("T")[0] : "", // Formato YYYY-MM-DD
   })
 
-  // 🔑 Función para obtener el token del localStorage
+  // Función para obtener el token del localStorage
   const getAuthToken = () => {
     if (typeof window !== "undefined") {
       return localStorage.getItem("access_token")
@@ -39,7 +38,7 @@ export function OwnerForm({ owner, onBack, onSave }: OwnerFormProps) {
     return null
   }
 
-const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
     const token = getAuthToken()
@@ -72,11 +71,12 @@ const handleSubmit = async (e: React.FormEvent) => {
         }
 
         alert(`Propietario ${isEditing ? 'actualizado' : 'creado'} con éxito!`)
-        onSave() // Regresa a la tabla y recarga los datos
+        onSave() // Regresa a la tabla (y la tabla se recargará)
     } catch (e) {
         alert("Error de conexión con el servidor.")
     }
   }
+
 
   const handleChange = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
@@ -135,12 +135,11 @@ const handleSubmit = async (e: React.FormEvent) => {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="celular">Celular *</Label>
+              <Label htmlFor="celular">Celular</Label>
               <Input
                 id="celular"
                 value={formData.celular}
                 onChange={(e) => handleChange("celular", e.target.value)}
-                required
                 maxLength={9}
                 placeholder="987654321"
                 className="bg-white"
@@ -161,19 +160,18 @@ const handleSubmit = async (e: React.FormEvent) => {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="fechaNacimiento">Fecha de Nacimiento *</Label>
+              <Label htmlFor="fechaNacimiento">Fecha de Nacimiento</Label>
               <Input
                 id="fechaNacimiento"
                 type="date"
                 value={formData.fechaNacimiento}
                 onChange={(e) => handleChange("fechaNacimiento", e.target.value)}
-                required
                 className="bg-white"
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="sexo">Sexo *</Label>
+              <Label htmlFor="sexo">Sexo</Label>
               <Select value={formData.sexo} onValueChange={(value) => handleChange("sexo", value)}>
                 <SelectTrigger id="sexo" className="bg-white">
                   <SelectValue />
@@ -186,12 +184,11 @@ const handleSubmit = async (e: React.FormEvent) => {
             </div>
 
             <div className="space-y-2 md:col-span-2">
-              <Label htmlFor="direccion">Dirección *</Label>
+              <Label htmlFor="direccion">Dirección</Label>
               <Input
                 id="direccion"
                 value={formData.direccion}
                 onChange={(e) => handleChange("direccion", e.target.value)}
-                required
                 placeholder="Ingrese la dirección completa"
                 className="bg-white"
               />

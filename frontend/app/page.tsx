@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
@@ -19,15 +18,13 @@ export default function LoginPage() {
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
 
-//modificar con tu backend
-const API_BASE_URL = "http://127.0.0.1:5000"
-
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("") // Limpiar errores previos
 
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/login`, { // Usar la URL de tu backend
+      const response = await fetch(`${API_BASE_URL}/auth/login`, { // Usar la URL del backend
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -45,13 +42,13 @@ const API_BASE_URL = "http://127.0.0.1:5000"
 
       // Login exitoso: Guardar token, rol y username
       if (typeof window !== "undefined") {
-        localStorage.setItem("access_token", data.access_token) // ¡Nuevo! Guardar el token
-        localStorage.setItem("userRole", data.userRole) 
-        localStorage.setItem("username", data.username) 
+        localStorage.setItem("access_token", data.access_token) // Guardar el token
+        localStorage.setItem("userRole", data.userRole)
+        localStorage.setItem("username", data.username)
       }
 
-      // Redirigir según el rol 
-      if (data.userRole === "asistente") { 
+      // Redirigir según el rol
+      if (data.userRole === "asistente") {
         router.push("/asistente")
       } else {
         router.push("/veterinario")
@@ -61,7 +58,6 @@ const API_BASE_URL = "http://127.0.0.1:5000"
       console.error("Login API Error:", error)
     }
   }
-
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-[#d0e8ed] via-[#7ececa] to-[#1793a5] flex items-center justify-center p-4">

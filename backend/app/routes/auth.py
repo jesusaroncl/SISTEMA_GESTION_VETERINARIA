@@ -2,7 +2,6 @@ from flask import Blueprint, request, jsonify
 from app import db
 from app.models import User
 from sqlalchemy.exc import IntegrityError
-import uuid
 
 auth = Blueprint('auth', __name__)
 
@@ -40,13 +39,13 @@ def login():
     username = data.get('username')
     password = data.get('password')
     
-
     user = db.session.execute(db.select(User).filter_by(username=username)).scalar_one_or_none()
 
     if user and user.check_password(password):
         # Generar JWT que incluye el rol
         access_token = user.get_jwt()
         
+        # Devolvemos los datos que el frontend necesita
         return jsonify({
             "access_token": access_token,
             "userRole": user.role,

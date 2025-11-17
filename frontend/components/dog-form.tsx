@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -10,6 +9,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ArrowLeft, Save } from "lucide-react"
 import type { Dog } from "@/lib/types"
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL
 
 type DogFormProps = {
   dog: Dog | null
@@ -21,17 +22,53 @@ type DogFormProps = {
 
 export function DogForm({ dog, ownerId, ownerName, onBack, onSave }: DogFormProps) {
   const [formData, setFormData] = useState({
+    especie: dog?.especie || "Canino", // Default 'Canino'
     nombre: dog?.nombre || "",
     raza: dog?.raza || "",
-    fechaNacimiento: dog?.fechaNacimiento || "",
+    fechaNacimiento: dog?.fechaNacimiento ? dog.fechaNacimiento.split("T")[0] : "",
     sexo: dog?.sexo || "Macho",
     estado: dog?.estado || "Vivo",
   })
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const getAuthToken = () => {
+    return typeof window !== "undefined" ? localStorage.getItem("access_token") : null
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    console.log("Guardar perro:", { ...formData, ownerId })
-    onSave()
+
+    const token = getAuthToken()
+    if (!token) {
+      alert("Error de autenticación");
+      return;
+    }
+
+    const isEditing = !!dog
+    const url = isEditing
+      ? `${API_BASE_URL}/api/dogs/${dog.id}`                 // PUT (Update)
+      : `${API_BASE_URL}/api/owners/${ownerId}/dogs` // POST (Create)
+    const method = isEditing ? "PUT" : "POST"
+
+    try {
+      const response = await fetch(url, {
+        method: method,
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify(formData)
+      })
+
+      if (!response.ok) {
+        const data = await response.json()
+        alert(data.msg || "Error al guardar el perro.")
+        return
+      }
+
+      onSave() // Vuelve a la tabla (que se recargará)
+    } catch (e) {
+      alert("Error de conexión al guardar el perro.")
+    }
   }
 
   const handleChange = (field: string, value: string) => {
@@ -54,6 +91,21 @@ export function DogForm({ dog, ownerId, ownerName, onBack, onSave }: DogFormProp
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="grid gap-6 md:grid-cols-2">
+
+            <div className="space-y-2">
+              <Label htmlFor="especie">Especie *</Label>
+              <Select value={formData.especie} onValueChange={(value) => handleChange("especie", value)}>
+                <SelectTrigger id="especie">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Canino">Canino</SelectItem>
+                  <SelectItem value="Felino">Felino</SelectItem>
+                  {/* Puedes añadir más especies si lo deseas */}
+                </SelectContent>
+              </Select>
+            </div>
+            
             <div className="space-y-2">
               <Label htmlFor="nombre">Nombre *</Label>
               <Input

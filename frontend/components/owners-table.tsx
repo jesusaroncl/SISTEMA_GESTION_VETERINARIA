@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo, useCallback, useEffect } from "react"
+import { useState, useMemo, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -8,42 +8,45 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Search, Plus, Edit, Trash2, Eye } from "lucide-react"
 import type { Owner } from "@/lib/types"
 
-// Definir la URL base de tu backend Flask (ajustar si es necesario)
-const API_BASE_URL = "http://127.0.0.1:5000" //modificar con tu backend
+// Definir la URL base de tu backend Flask
+// Asegúrate de crear este archivo: /frontend/.env.local
+// con el contenido: NEXT_PUBLIC_API_BASE_URL="http://127.0.0.1:5000"
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:5000"
 
 type OwnersTableProps = {
+  role: "asistente" | "veterinario"
   onNewOwner: () => void
   onEditOwner: (owner: Owner) => void
   onViewDogs: (owner: Owner) => void
 }
 
-export function OwnersTable({ onNewOwner, onEditOwner, onViewDogs }: OwnersTableProps) {
+export function OwnersTable({ role, onNewOwner, onEditOwner, onViewDogs }: OwnersTableProps) {
+  // Inicializar con un array vacío
   const [owners, setOwners] = useState<Owner[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 10
-  const [loading, setLoading] = useState<boolean>(false)
-  const [error, setError] = useState<string | null>(null)
 
-  // 🔑 Función para obtener el token del localStorage
+  // Función para obtener el token del localStorage
   const getAuthToken = () => {
     if (typeof window !== "undefined") {
-      return localStorage.getItem("access_token") 
+      return localStorage.getItem("access_token")
     }
     return null
   }
 
-
-  // 🌐 Función para cargar los propietarios
+  // Función para cargar los propietarios
   const fetchOwners = useCallback(async () => {
     setLoading(true)
     setError(null)
     const token = getAuthToken()
 
     if (!token) {
-        setError("Error de autenticación: Token no encontrado.")
-        setLoading(false)
-        return
+      setError("Error de autenticación: Token no encontrado.")
+      setLoading(false)
+      return
     }
 
     try {
@@ -51,11 +54,10 @@ export function OwnersTable({ onNewOwner, onEditOwner, onViewDogs }: OwnersTable
         method: "GET",
         headers: {
           "Content-Type": "application/json",
-          // 📢 Incluir el token JWT en el encabezado Authorization
-          "Authorization": `Bearer ${token}`, 
+          "Authorization": `Bearer ${token}`,
         },
       })
-      
+
       const data = await response.json()
 
       if (!response.ok) {
@@ -72,22 +74,23 @@ export function OwnersTable({ onNewOwner, onEditOwner, onViewDogs }: OwnersTable
     }
   }, []) // Dependencias vacías, solo se crea una vez
 
-  // 🔄 Ejecutar la carga al montar el componente
+  // Ejecutar la carga al montar el componente
   useEffect(() => {
     fetchOwners()
   }, [fetchOwners])
 
-  // Función de eliminación (debes conectarla a la API DELETE)
-  const handleDelete = async (id: string) => { // Actualizada para ser asíncrona
+
+  // Función de eliminación
+  const handleDelete = async (id: string) => {
     if (confirm("¿Está seguro de eliminar este propietario?")) {
       const token = getAuthToken()
-      if (!token) return // No eliminar si no hay token
+      if (!token) return
 
       try {
         const response = await fetch(`${API_BASE_URL}/api/owners/${id}`, {
           method: "DELETE",
           headers: {
-            "Authorization": `Bearer ${token}`, 
+            "Authorization": `Bearer ${token}`,
           },
         })
 
@@ -98,12 +101,13 @@ export function OwnersTable({ onNewOwner, onEditOwner, onViewDogs }: OwnersTable
         }
 
         // Éxito: Recargar la lista de propietarios
-        fetchOwners() 
+        fetchOwners()
       } catch (e) {
         alert("Error de conexión al eliminar.")
       }
     }
   }
+
 
   const filteredOwners = useMemo(() => {
     return owners.filter(
@@ -111,7 +115,7 @@ export function OwnersTable({ onNewOwner, onEditOwner, onViewDogs }: OwnersTable
         owner.nombres.toLowerCase().includes(searchTerm.toLowerCase()) ||
         owner.apellidos.toLowerCase().includes(searchTerm.toLowerCase()) ||
         owner.dni.includes(searchTerm) ||
-        owner.celular.includes(searchTerm),
+        (owner.celular && owner.celular.includes(searchTerm)),
     )
   }, [owners, searchTerm])
 
@@ -138,65 +142,90 @@ export function OwnersTable({ onNewOwner, onEditOwner, onViewDogs }: OwnersTable
               className="pl-10"
             />
           </div>
-          <Button onClick={onNewOwner} className="gap-2">
-            <Plus className="h-4 w-4" />
-            Nuevo Registro
-          </Button>
+          
+          {/* --- RENDERIZADO CONDICIONAL: Botón Nuevo Registro --- */}
+          {role === 'asistente' && (
+            <Button onClick={onNewOwner} className="gap-2">
+              <Plus className="h-4 w-4" />
+              Nuevo Registro
+            </Button>
+          )}
         </div>
 
-        <div className="rounded-md border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Nombres</TableHead>
-                <TableHead>Apellidos</TableHead>
-                <TableHead>DNI</TableHead>
-                <TableHead>Celular</TableHead>
-                <TableHead className="text-center">Editar</TableHead>
-                <TableHead className="text-center">Eliminar</TableHead>
-                <TableHead className="text-center">Perros</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {paginatedOwners.length === 0 ? (
+        {loading && <p className="text-center py-8">Cargando propietarios...</p>}
+        {error && <p className="text-center py-8 text-destructive">Error: {error}</p>}
+
+        {!loading && !error && (
+          <div className="rounded-md border">
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
-                    No se encontraron propietarios
-                  </TableCell>
+                  <TableHead>Nombres</TableHead>
+                  <TableHead>Apellidos</TableHead>
+                  <TableHead>DNI</TableHead>
+                  <TableHead>Celular</TableHead>
+                  
+                  {/* --- RENDERIZADO CONDICIONAL: Cabeceras --- */}
+                  {role === 'asistente' && (
+                    <>
+                      <TableHead className="text-center">Editar</TableHead>
+                      <TableHead className="text-center">Eliminar</TableHead>
+                    </>
+                  )}
+                  
+                  <TableHead className="text-center">Perros</TableHead>
                 </TableRow>
-              ) : (
-                paginatedOwners.map((owner) => (
-                  <TableRow key={owner.id}>
-                    <TableCell className="font-medium">{owner.nombres}</TableCell>
-                    <TableCell>{owner.apellidos}</TableCell>
-                    <TableCell>{owner.dni}</TableCell>
-                    <TableCell>{owner.celular}</TableCell>
-                    <TableCell className="text-center">
-                      <Button variant="ghost" size="icon" onClick={() => onEditOwner(owner)} className="h-8 w-8">
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleDelete(owner.id)}
-                        className="h-8 w-8 text-destructive hover:text-destructive"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <Button variant="ghost" size="icon" onClick={() => onViewDogs(owner)} className="h-8 w-8">
-                        <Eye className="h-4 w-4" />
-                      </Button>
+              </TableHeader>
+              <TableBody>
+                {paginatedOwners.length === 0 ? (
+                  <TableRow>
+                    {/* Ajustar colSpan dinámicamente */}
+                    <TableCell colSpan={role === 'asistente' ? 7 : 5} className="text-center text-muted-foreground py-8">
+                      No se encontraron propietarios
                     </TableCell>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </div>
+                ) : (
+                  paginatedOwners.map((owner) => (
+                    <TableRow key={owner.id}>
+                      <TableCell className="font-medium">{owner.nombres}</TableCell>
+                      <TableCell>{owner.apellidos}</TableCell>
+                      <TableCell>{owner.dni}</TableCell>
+                      <TableCell>{owner.celular}</TableCell>
+
+                      {/* --- RENDERIZADO CONDICIONAL: Botones Editar/Eliminar --- */}
+                      {role === 'asistente' && (
+                        <>
+                          <TableCell className="text-center">
+                            <Button variant="ghost" size="icon" onClick={() => onEditOwner(owner)} className="h-8 w-8">
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleDelete(owner.id)}
+                              className="h-8 w-8 text-destructive hover:text-destructive"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </TableCell>
+                        </>
+                      )}
+                      
+                      {/* Botón "Ver Perros" siempre visible */}
+                      <TableCell className="text-center">
+                        <Button variant="ghost" size="icon" onClick={() => onViewDogs(owner)} className="h-8 w-8">
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        )}
 
         {totalPages > 1 && (
           <div className="flex items-center justify-between mt-4">
@@ -239,7 +268,5 @@ export function OwnersTable({ onNewOwner, onEditOwner, onViewDogs }: OwnersTable
         )}
       </CardContent>
     </Card>
-  // setLoading and setError are managed by useState above
-
-)}
-
+  )
+}

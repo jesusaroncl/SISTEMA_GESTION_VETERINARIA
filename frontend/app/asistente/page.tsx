@@ -2,14 +2,12 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { OwnersTable } from "@/components/owners-table"
+import { OwnersTable } from "@/components/owners-table" // Refactorizado
 import { OwnerForm } from "@/components/owner-form"
-import { DogsView } from "@/components/dogs-view"
+import { DogsView } from "@/components/dogs-view" // Refactorizado
 import { Button } from "@/components/ui/button"
 import { LogOut, Home } from "lucide-react"
 import type { Owner } from "@/lib/types"
-
-
 
 export default function AsistentePage() {
   const router = useRouter()
@@ -33,6 +31,7 @@ export default function AsistentePage() {
   const handleLogout = () => {
     localStorage.removeItem("userRole")
     localStorage.removeItem("username")
+    localStorage.removeItem("access_token") // Limpiar token
     router.push("/")
   }
 
@@ -93,14 +92,28 @@ export default function AsistentePage() {
 
       <div className="container mx-auto py-8 px-4">
         {view === "owners" && (
-          <OwnersTable onNewOwner={handleNewOwner} onEditOwner={handleEditOwner} onViewDogs={handleViewDogs} />
+          <OwnersTable
+            role="asistente" // Rol de Asistente
+            onNewOwner={handleNewOwner}
+            onEditOwner={handleEditOwner}
+            onViewDogs={handleViewDogs}
+          />
         )}
 
         {view === "owner-form" && (
-          <OwnerForm owner={editingOwner} onBack={handleBackToOwners} onSave={handleBackToOwners} />
+          <OwnerForm 
+            owner={editingOwner} 
+            onBack={handleBackToOwners} 
+            onSave={handleBackToOwners} 
+          />
         )}
 
-        {view === "dogs" && selectedOwner && <DogsView owner={selectedOwner} onBack={handleBackToOwners} />}
+        {view === "dogs" && selectedOwner && (
+          <DogsView 
+            owner={selectedOwner} 
+            onBack={handleBackToOwners} 
+          />
+        )}
       </div>
     </main>
   )

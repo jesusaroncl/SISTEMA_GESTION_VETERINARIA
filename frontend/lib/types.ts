@@ -1,4 +1,3 @@
-
 export type Owner = {
   id: string
   nombres: string
@@ -14,6 +13,7 @@ export type Owner = {
 export type Dog = {
   id: string
   ownerId: string
+  especie: string // Campo añadido
   nombre: string
   raza: string
   fechaNacimiento: string
@@ -31,7 +31,6 @@ export type Evaluation = {
 
 export type UploadedData = {
   soploCardiaco: File | null
-  radiografia: File | null
 }
 
 export type EvaluationData = {

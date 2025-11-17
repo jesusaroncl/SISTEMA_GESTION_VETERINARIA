@@ -3,7 +3,7 @@
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ArrowLeft } from "lucide-react"
-import { VetDogsTable } from "@/components/vet-dogs-table"
+import { DogsTable } from "@/components/dogs-table" // <-- Se usa el componente refactorizado
 import type { Owner, Dog } from "@/lib/types"
 
 type VetDogsViewProps = {
@@ -29,7 +29,14 @@ export function VetDogsView({ owner, onBack, onViewEvaluations }: VetDogsViewPro
         </div>
       </CardHeader>
       <CardContent>
-        <VetDogsTable ownerId={owner.id} onViewEvaluations={onViewEvaluations} />
+        {/* Se pasa el rol "veterinario" y el callback de evaluaciones.
+          No se pasan onNewDog/onEditDog porque no son necesarios aquí.
+        */}
+        <DogsTable 
+            ownerId={owner.id} 
+            role="veterinario"
+            onViewEvaluations={onViewEvaluations} 
+        />
       </CardContent>
     </Card>
   )

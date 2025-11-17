@@ -4,7 +4,7 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ArrowLeft } from "lucide-react"
-import { DogsTable } from "@/components/dogs-table"
+import { DogsTable } from "@/components/dogs-table" // <-- Se usa el componente refactorizado
 import { DogForm } from "@/components/dog-form"
 import type { Owner, Dog } from "@/lib/types"
 
@@ -52,7 +52,13 @@ export function DogsView({ owner, onBack }: DogsViewProps) {
             </div>
           </CardHeader>
           <CardContent>
-            <DogsTable ownerId={owner.id} onNewDog={handleNewDog} onEditDog={handleEditDog} />
+            {/* Se pasa el rol "asistente" y los callbacks de edición */}
+            <DogsTable
+              ownerId={owner.id}
+              role="asistente" 
+              onNewDog={handleNewDog}
+              onEditDog={handleEditDog}
+            />
           </CardContent>
         </Card>
       ) : (
