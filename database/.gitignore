@@ -1,0 +1,23 @@
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Backups
+*.sql.backup
+*.dump
+backups/
+
+# Logs
+*.log
+
+# Environment
+.env
+
+# MySQL
+mysql-data/
+mysql-logs/
+
+# PostgreSQL
+pg-data/
+postgresql-data/
