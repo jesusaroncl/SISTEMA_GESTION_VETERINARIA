@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+
+  # --- 1. Servicio de Base de Datos (PostgreSQL) ---
+  db:
+    image: postgres:15-alpine
+    container_name: veterinaria_db_container
+    restart: always
+    environment:
+      # Carga las variables de tu .env de backend
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      # Persiste los datos de la DB
+      - postgres_data:/var/lib/postgresql/data/
+      # Carga el schema.sql al iniciar por primera vez
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    ports:
+      # Mapea el puerto de tu PC al contenedor
+      - "5432:5432"
+
+  # --- 2. Servicio de Backend (Flask) ---
+  backend:
+    build:
+      context: ./backend # Le dice a Docker que busque el Dockerfile en la carpeta /backend
+    container_name: veterinaria_backend
+    restart: always
+    env_file:
+      - ./backend/.env # Carga TODAS las variables de tu .env (DB_URL, JWT_SECRET, etc.)
+    ports:
+      - "5000:5000"
+    volumes:
+      # Sincroniza la carpeta 'uploads' para que los archivos no se pierdan
+      - ./backend/uploads:/usr/src/app/uploads
+    depends_on:
+      - db # Le dice a Docker que inicie la DB primero
+
+  # --- 3. Servicio de Frontend (Next.js) ---
+  frontend:
+    build:
+      context: ./frontend # Le dice a Docker que busque el Dockerfile en la carpeta /frontend
+      args:
+        # Pasa la URL de la API al build de Next.js
+        # 'backend' es el nombre del servicio de arriba, Docker lo resuelve
+        NEXT_PUBLIC_API_BASE_URL: "http://backend:5000"
+    container_name: veterinaria_frontend
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      # Variable de entorno en runtime (para el 'pnpm start')
+      NEXT_PUBLIC_API_BASE_URL: "http://backend:5000"
+    depends_on:
+      - backend # Espera a que el backend esté listo
+
+volumes:
+  # Define el volumen para la persistencia de la DB
+  postgres_data:

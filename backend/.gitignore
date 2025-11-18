@@ -1,41 +1,12 @@
-# Python cache
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-
-# Virtual environments
+# Entorno Virtual
 venv/
-env/
-ENV/
-.venv
 
-# Flask
-instance/
-.webassets-cache
-
-# Database
-*.db
-*.sqlite
-*.sqlite3
-
-# Environment
+# Variables de entorno (¡NUNCA SUBIR CLAVES!)
 .env
-.env.local
 
-# Uploads
+# Archivos de caché de Python
+__pycache__/
+*.pyc
+
+# Archivos de subida de usuarios
 uploads/
-media/
-
-# Testing
-.pytest_cache/
-.coverage
-htmlcov/
-
-# IDEs
-.vscode/
-.idea/
-*.swp
-
-# Logs
-*.log
