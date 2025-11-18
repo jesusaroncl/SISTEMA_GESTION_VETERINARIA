@@ -1,25 +1,17 @@
-# 1. Elimina esta línea (es obsoleta)
-# version: '3.8' 
+# Elimina la línea 'version: 3.8' si la tienes, es obsoleta.
 
 services:
+
   # --- 1. Servicio de Base de Datos (PostgreSQL) ---
   db:
     image: postgres:15-alpine
     container_name: veterinaria_db_container
     restart: always
-    
-    # 2. AÑADE ESTA LÍNEA (env_file)
-    # Le dice al contenedor de DB que también lea las variables del .env
-    env_file:
-      - ./backend/.env
-      
-    # 3. ELIMINA ESTE BLOQUE 'environment'
-    # (Ya que ahora las lee del env_file)
-    # environment:
-    #   POSTGRES_USER: ${POSTGRES_USER}
-    #   POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    #   POSTGRES_DB: ${POSTGRES_DB}
-      
+    # Las variables de la DB se ponen aquí directamente
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: admin
+      POSTGRES_DB: veterinaria_db
     volumes:
       - postgres_data:/var/lib/postgresql/data/
       - ./database/schema.sql:/docker-entrypoint-initdb.d/schema.sql
@@ -27,14 +19,23 @@ services:
       - "5432:5432"
 
   # --- 2. Servicio de Backend (Flask) ---
-  # (Esta sección se mantiene igual)
   backend:
     build:
       context: ./backend
     container_name: veterinaria_backend
     restart: always
-    env_file:
-      - ./backend/.env
+    # NO usamos 'env_file'. Todas las variables se ponen aquí:
+    environment:
+      # Conexión a la DB (usa el nombre del servicio 'db')
+      DATABASE_URL: "postgresql://postgres:admin@db:5432/veterinaria_db"
+      
+      # Claves Secretas
+      SECRET_KEY: "77TU)y//@Z0KEK'6iA}TPFxe)3Bl\Nh,9D3\"4[eGT$48?a@JuRO(r=nT,z|Wybj"
+      JWT_SECRET_KEY: "1257eaeb180b3127d379b72994a6a54e7793b9b58f858efe1d0174e99afc5cfb"
+      
+      # Variables de Flask
+      FLASK_APP: app
+      FLASK_RUN_HOST: 0.0.0.0
     ports:
       - "5000:5000"
     volumes:
@@ -43,17 +44,18 @@ services:
       - db
 
   # --- 3. Servicio de Frontend (Next.js) ---
-  # (Esta sección se mantiene igual)
   frontend:
     build:
       context: ./frontend
       args:
+        # La URL que el navegador usará para encontrar el backend
         NEXT_PUBLIC_API_BASE_URL: "http://localhost:5000"
     container_name: veterinaria_frontend
     restart: always
     ports:
       - "3000:3000"
     environment:
+      # La URL que el navegador usará (runtime)
       NEXT_PUBLIC_API_BASE_URL: "http://localhost:5000"
     depends_on:
       - backend
