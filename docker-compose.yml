@@ -1,17 +1,27 @@
 services:
   db:
     image: postgres:15-alpine
-    container_name: veterinaria_database
+    container_name: veterinaria_db_container
     restart: always
     environment:
+      # Variables hardcodeadas (como solicitaste)
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: admin
       POSTGRES_DB: veterinaria_db
     volumes:
+      # Solo persistimos los datos, ya NO usamos schema.sql
       - postgres_data:/var/lib/postgresql/data/
-      - ./database/schema.sql:/docker-entrypoint-initdb.d/schema.sql
     ports:
       - "5432:5432"
+    
+    # --- AÑADE ESTE BLOQUE ---
+    # Esto le dice a Docker cómo comprobar si Postgres está listo
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d veterinaria_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s # Darle 10s para arrancar antes de testear
 
   backend:
     build:
@@ -19,6 +29,7 @@ services:
     container_name: veterinaria_backend
     restart: always
     environment:
+      # Variables hardcodeadas (como solicitaste)
       DATABASE_URL: "postgresql://postgres:admin@db:5432/veterinaria_db"
       SECRET_KEY: "77TU)y//@Z0KEK'6iA}TPFxe)3Bl\Nh,9D3\"4[eGT$48?a@JuRO(r=nT,z|Wybj"
       JWT_SECRET_KEY: "1257eaeb180b3127d379b72994a6a54e7793b9b58f858efe1d0174e99afc5cfb"
@@ -28,8 +39,12 @@ services:
       - "5000:5000"
     volumes:
       - ./backend/uploads:/usr/src/app/uploads
+    
+    # --- MODIFICA ESTE BLOQUE ---
+    # 'depends_on' ahora espera a que el 'healthcheck' pase
     depends_on:
-      - db
+      db:
+        condition: service_healthy # <-- ¡LA CLAVE!
 
   frontend:
     build:
@@ -45,8 +60,5 @@ services:
     depends_on:
       - backend
 
-# Esta es la sección que fallaba.
-# Debe estar al nivel raíz (sin indentación)
-# y 'postgres_data' debe estar indentado debajo de él.
 volumes:
   postgres_data:
