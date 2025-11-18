@@ -1,0 +1,5 @@
+# Ignorar las dependencias locales, deben ser instaladas DENTRO del contenedor
+node_modules
+
+# Ignorar el caché de build local
+.next
