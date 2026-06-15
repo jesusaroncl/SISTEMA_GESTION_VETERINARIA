@@ -17,8 +17,31 @@ type NewEvaluationFormProps = {
   onEvaluate: (data: EvaluationData) => void
 }
 
+const ML_TO_NIVEL: Record<string, string> = {
+  "Normal": "Normal",
+  "Riesgo Moderado": "Ligeramente audible",
+  "Alto Riesgo": "Audible dentro del normal",
+}
+
+const GRADO_INFO: Record<string, string> = {
+  "NaN": "Ausencia del soplo cardiaco",
+  "I": "El soplo más tenue que puede escucharse con certeza",
+  "II": "Soplo leve",
+  "III": "Soplo con intensidad moderada",
+}
+
 export function NewEvaluationForm({ data, onBack, onEvaluate }: NewEvaluationFormProps) {
   const [formData, setFormData] = useState<EvaluationData>(data)
+  const [nivel, setNivel] = useState<string>(ML_TO_NIVEL[data.soploCardiaco] ?? "Normal")
+  const [grado, setGrado] = useState<string>(
+    ML_TO_NIVEL[data.soploCardiaco] === "Ligeramente audible" ? "I" : ""
+  )
+
+  const handleNivelChange = (value: string) => {
+    setNivel(value)
+    setGrado(value === "Ligeramente audible" ? "I" : "")
+    setFormData({ ...formData, soploCardiaco: value, esRiesgo: value !== "Normal" })
+  }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -73,14 +96,49 @@ export function NewEvaluationForm({ data, onBack, onEvaluate }: NewEvaluationFor
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="soplo">Nivel</Label>
-            <Input
-              id="soplo"
-              value={formData.soploCardiaco}
-              onChange={(e) => setFormData({ ...formData, soploCardiaco: e.target.value })}
-              required
-              className="bg-white"
-            />
+            <Label>Nivel</Label>
+            <Select value={nivel} onValueChange={handleNivelChange}>
+              <SelectTrigger className="bg-white">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Normal">Normal</SelectItem>
+                <SelectItem value="Ligeramente audible">Ligeramente audible</SelectItem>
+                <SelectItem value="Audible dentro del normal">Audible dentro del normal</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Grado Levine</Label>
+            {nivel === "Normal" && (
+              <div className="bg-white border rounded-md px-3 py-2 text-sm">
+                <span className="font-medium">NaN</span>
+                <span className="text-muted-foreground"> — {GRADO_INFO["NaN"]}</span>
+              </div>
+            )}
+            {nivel === "Ligeramente audible" && (
+              <div className="space-y-2">
+                <Select value={grado} onValueChange={setGrado}>
+                  <SelectTrigger className="bg-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="I">Grado I</SelectItem>
+                    <SelectItem value="II">Grado II</SelectItem>
+                  </SelectContent>
+                </Select>
+                {grado && (
+                  <p className="text-sm text-muted-foreground">{GRADO_INFO[grado]}</p>
+                )}
+              </div>
+            )}
+            {nivel === "Audible dentro del normal" && (
+              <div className="bg-white border rounded-md px-3 py-2 text-sm">
+                <span className="font-medium">III</span>
+                <span className="text-muted-foreground"> — {GRADO_INFO["III"]}</span>
+              </div>
+            )}
           </div>
 
           <div className="flex gap-4 pt-4">
