@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ArrowLeft } from "lucide-react"
 import type { EvaluationData } from "@/lib/types"
 
@@ -61,37 +61,26 @@ export function NewEvaluationForm({ data, onBack, onEvaluate }: NewEvaluationFor
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="soplo">Soplo Cardiaco</Label>
+            <Label htmlFor="prueba">Prueba médica</Label>
+            <Select defaultValue="soplo">
+              <SelectTrigger id="prueba" className="bg-white">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="soplo">Soplo cardiaco</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="soplo">Nivel</Label>
             <Input
               id="soplo"
               value={formData.soploCardiaco}
               onChange={(e) => setFormData({ ...formData, soploCardiaco: e.target.value })}
-              placeholder="Ej: Grado II/VI"
               required
               className="bg-white"
             />
-          </div>
-
-          <div className="space-y-3">
-            <Label>¿El paciente es de riesgo?</Label>
-            <RadioGroup
-              value={formData.esRiesgo ? "si" : "no"}
-              onValueChange={(value) => setFormData({ ...formData, esRiesgo: value === "si" })}
-            >
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="si" id="riesgo-si" />
-                <Label htmlFor="riesgo-si" className="font-normal cursor-pointer">
-                  Sí
-                </Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="no" id="riesgo-no" />
-                <Label htmlFor="riesgo-no" className="font-normal cursor-pointer">
-                  No
-                </Label>
-              </div>
-            </RadioGroup>
-            <p className="text-sm text-muted-foreground">(Presenta o presentó {formData.datosResultado})</p>
           </div>
 
           <div className="flex gap-4 pt-4">
