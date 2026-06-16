@@ -103,35 +103,39 @@ export function EvaluationsView({ dog, onBack, onNewEvaluation }: EvaluationsVie
 
         {!loading && !error && (
           <>
-            <div className="rounded-md border">
+            <div className="rounded-md border overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>ID</TableHead>
-                    <TableHead>Fecha de Evaluación</TableHead>
-                    <TableHead>Resultado</TableHead>
-                    <TableHead>Comentarios</TableHead>
+                    <TableHead className="whitespace-nowrap">ID</TableHead>
+                    <TableHead className="whitespace-nowrap">Fecha</TableHead>
+                    <TableHead className="whitespace-nowrap">Resultado Machine Learning</TableHead>
+                    <TableHead className="whitespace-nowrap">Categoría</TableHead>
+                    <TableHead className="whitespace-nowrap">Grado Levine</TableHead>
+                    <TableHead className="whitespace-nowrap">Descripción del grado</TableHead>
+                    <TableHead className="whitespace-nowrap">Comentarios</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {paginatedEvaluations.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
+                      <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                         No hay evaluaciones registradas
                       </TableCell>
                     </TableRow>
                   ) : (
                     paginatedEvaluations.map((evaluation) => (
                       <TableRow key={evaluation.id}>
-                        {/* Acortar el UUID para visualización */}
-                        <TableCell className="font-medium">{evaluation.id.substring(0, 8)}...</TableCell> 
-                        <TableCell>{new Date(evaluation.fecha).toLocaleDateString("es-ES")}</TableCell>
+                        <TableCell className="font-medium">{evaluation.id.substring(0, 8)}...</TableCell>
+                        <TableCell className="whitespace-nowrap">
+                          {new Date(evaluation.fecha).toLocaleDateString("es-ES")}
+                        </TableCell>
                         <TableCell>
                           <span
-                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${
                               evaluation.resultado === "Normal"
                                 ? "bg-green-100 text-green-800"
-                                : evaluation.resultado === "Riesgo Moderado"
+                                : evaluation.resultado === "Ligeramente audible"
                                 ? "bg-yellow-100 text-yellow-800"
                                 : "bg-red-100 text-red-800"
                             }`}
@@ -139,8 +143,18 @@ export function EvaluationsView({ dog, onBack, onNewEvaluation }: EvaluationsVie
                             {evaluation.resultado}
                           </span>
                         </TableCell>
-                        {/* Usar 'whitespace-pre-wrap' para respetar saltos de línea en comentarios */}
-                        <TableCell className="max-w-md whitespace-pre-wrap">{evaluation.comentarios}</TableCell> 
+                        <TableCell className="whitespace-nowrap font-medium">
+                          {evaluation.categoria ?? "—"}
+                        </TableCell>
+                        <TableCell className="text-center font-mono whitespace-nowrap">
+                          {evaluation.gradoLevine ?? "—"}
+                        </TableCell>
+                        <TableCell className="max-w-xs">
+                          {evaluation.descripcionGrado ?? "—"}
+                        </TableCell>
+                        <TableCell className="max-w-sm whitespace-pre-wrap">
+                          {evaluation.comentarios}
+                        </TableCell>
                       </TableRow>
                     ))
                   )}

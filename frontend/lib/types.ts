@@ -27,6 +27,9 @@ export type Evaluation = {
   fecha: string
   resultado: string
   comentarios: string
+  categoria?: string
+  gradoLevine?: string
+  descripcionGrado?: string
 }
 
 export type UploadedData = {

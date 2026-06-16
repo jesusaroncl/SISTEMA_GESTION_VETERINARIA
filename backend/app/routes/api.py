@@ -273,7 +273,7 @@ def evaluate_dog_audio(dog_id):
             # 3. Llamar al modelo de ML (pasamos la RUTA del audio)
             prediccion = predecir_soplo_cardiaco(audio_path) 
             
-            # 4. Determinar el riesgo
+            # 4. Determinar el riesgo ("Normal" = sin riesgo, resto = riesgo)
             es_riesgo = prediccion != "Normal"
 
             # 5. Calcular datos para el frontend
@@ -305,15 +305,33 @@ def evaluate_dog_audio(dog_id):
 # --- Rutas CRUD para Evaluaciones (Evaluation) ---
 # ===================================================
 
+# Mapa de clasificación ACVIM del soplo cardíaco
+# Las claves coinciden exactamente con lo que retorna predictor.py
+CLASIFICACION_SOPLO = {
+    "Normal": {
+        "categoria": "Normal",
+        "grado_levine": "NaN",
+        "descripcion_grado": "Ausencia del soplo cardíaco",
+    },
+    "Ligeramente audible": {
+        "categoria": "Ligeramente audible",
+        "grado_levine": "I / II",
+        "descripcion_grado": "El soplo más tenue que puede escucharse con certeza / Soplo leve",
+    },
+    "Audible": {
+        "categoria": "Audible",
+        "grado_levine": "III",
+        "descripcion_grado": "Soplo con intensidad moderada",
+    },
+}
+
 @api.route('/evaluations', methods=['POST'])
 @role_required('veterinario')
 def create_evaluation():
-    """
-    Crea un nuevo registro de evaluación.
-    """
+    """Crea un nuevo registro de evaluación con clasificación de soplo cardíaco."""
     data = request.get_json()
     dog_id = data.get('dogId')
-    eval_data = data.get('evaluationData') 
+    eval_data = data.get('evaluationData')
 
     if not dog_id or not eval_data:
         return jsonify({"msg": "Faltan datos (dogId o evaluationData)"}), 400
@@ -321,31 +339,26 @@ def create_evaluation():
     if not dog:
         return jsonify({"msg": "Perro no encontrado"}), 404
 
-    # --- INICIO DE LA CORRECCIÓN ---
-    # 1. Obtener la predicción real de la IA (ej: "Normal", "Riesgo Moderado")
-    prediccion_ia = eval_data.get('soploCardiaco')
-    
-    # 2. El 'resultado' DEBE ser la predicción de la IA.
-    resultado_str = prediccion_ia
-    
-    # 3. El booleano 'esRiesgo' debe basarse en la predicción
+    prediccion_ia = eval_data.get('soploCardiaco')  # "Normal" | "Ligeramente audible" | "Audible"
     es_riesgo_bool = prediccion_ia != "Normal"
 
-    # 4. Construir el comentario
+    clasificacion = CLASIFICACION_SOPLO.get(prediccion_ia, CLASIFICACION_SOPLO["Normal"])
+
     comentarios_str = (
         f"Paciente de {eval_data.get('edad')} años, raza {eval_data.get('raza')}. "
-        f"Predicción IA: {prediccion_ia}. {eval_data.get('datosResultado')}. "
-        # Usar el booleano 'es_riesgo_bool' para el comentario final
+        f"Predicción Machine Learning: {prediccion_ia} — Grado Levine: {clasificacion['grado_levine']}. "
         f"{'Se recomienda seguimiento inmediato.' if es_riesgo_bool else 'Continuar con monitoreo regular.'}"
     )
-    # --- FIN DE LA CORRECCIÓN ---
 
     new_evaluation = Evaluation(
-        resultado=resultado_str,
+        resultado=prediccion_ia,
         comentarios=comentarios_str,
+        categoria=clasificacion['categoria'],
+        grado_levine=clasificacion['grado_levine'],
+        descripcion_grado=clasificacion['descripcion_grado'],
         dog_id=dog_id
     )
-    
+
     try:
         db.session.add(new_evaluation)
         db.session.commit()

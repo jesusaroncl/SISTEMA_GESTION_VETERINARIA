@@ -74,11 +74,16 @@ class Evaluation(db.Model):
     __tablename__ = 'evaluations'
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     fecha = db.Column(db.Date, nullable=False, default=datetime.date.today)
-    
-    # "Alto Riesgo", "Riesgo Moderado", "Normal"
-    resultado = db.Column(db.String(100), nullable=False) 
+
+    # "Normal" | "Riesgo Moderado" | "Alto Riesgo"
+    resultado = db.Column(db.String(100), nullable=False)
     comentarios = db.Column(db.Text, nullable=True)
-    
+
+    # Clasificación del soplo cardíaco (tabla ACVIM)
+    categoria = db.Column(db.String(50), nullable=True)       # "Normal" | "Ligeramente audible" | "Audible"
+    grado_levine = db.Column(db.String(20), nullable=True)    # "NaN" | "I / II" | "III"
+    descripcion_grado = db.Column(db.Text, nullable=True)     # descripción clínica del grado
+
     # Foreign Key a la tabla Dog
     dog_id = db.Column(db.String(36), db.ForeignKey('dogs.id'), nullable=False)
 
@@ -89,5 +94,8 @@ class Evaluation(db.Model):
             "dogId": self.dog_id,
             "fecha": self.fecha.isoformat(),
             "resultado": self.resultado,
-            "comentarios": self.comentarios
+            "comentarios": self.comentarios,
+            "categoria": self.categoria,
+            "gradoLevine": self.grado_levine,
+            "descripcionGrado": self.descripcion_grado,
         }
