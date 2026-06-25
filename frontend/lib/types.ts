@@ -2,12 +2,17 @@ export type Owner = {
   id: string
   nombres: string
   apellidos: string
+  tipoDocumento: string
   dni: string
   celular: string
   correo: string
   direccion: string
   sexo: "Masculino" | "Femenino"
   fechaNacimiento: string
+  ubigeo?: string
+  departamento?: string
+  provincia?: string
+  distrito?: string
 }
 
 export type Dog = {
@@ -30,10 +35,12 @@ export type Evaluation = {
   categoria?: string
   gradoLevine?: string
   descripcionGrado?: string
+  puntoAuscultacion?: string
 }
 
 export type UploadedData = {
   soploCardiaco: File | null
+  puntoAuscultacion?: string
 }
 
 export type EvaluationData = {
@@ -42,4 +49,5 @@ export type EvaluationData = {
   soploCardiaco: string
   esRiesgo: boolean
   datosResultado: string
+  puntoAuscultacion?: string
 }

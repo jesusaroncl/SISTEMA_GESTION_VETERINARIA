@@ -95,7 +95,7 @@ export default function VeterinarioPage() {
         const resultData = await response.json()
         if (!response.ok) throw new Error(resultData.msg || "Error en el servidor de ML")
 
-        setEvaluationData(resultData as EvaluationData)
+        setEvaluationData({ ...resultData, puntoAuscultacion: data.puntoAuscultacion } as EvaluationData)
         setView("new-evaluation")
 
     } catch (e) {

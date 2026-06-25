@@ -14,6 +14,31 @@ const TIPOS_EVALUACION = [
   { value: "soplo_cardiaco", label: "Soplo Cardíaco" },
 ]
 
+const PUNTO_MAP: Record<string, string> = {
+  PV:  "PV - Válvula Pulmonar",
+  TV:  "TV - Válvula Tricúspide",
+  AV:  "AV - Válvula Aórtica",
+  MV:  "MV - Válvula Mitral",
+  PHC: "Phc - Otro lugar de auscultación",
+}
+
+function detectPunto(filename: string): string {
+  const nameWithoutExt = filename.replace(/\.[^.]+$/, "")
+  const upper = nameWithoutExt.toUpperCase()
+  for (const [suffix, label] of Object.entries(PUNTO_MAP)) {
+    if (
+      upper === suffix ||
+      upper.endsWith("_" + suffix) ||
+      upper.endsWith("-" + suffix) ||
+      upper.endsWith(" " + suffix) ||
+      upper.endsWith(suffix)
+    ) {
+      return label
+    }
+  }
+  return ""
+}
+
 type DataUploadFormProps = {
   onBack: () => void
   onProcess: (data: UploadedData) => void
@@ -22,6 +47,12 @@ type DataUploadFormProps = {
 export function DataUploadForm({ onBack, onProcess }: DataUploadFormProps) {
   const [tipoEvaluacion, setTipoEvaluacion] = useState<string>("")
   const [soploCardiaco, setSoploCardiaco] = useState<File | null>(null)
+  const [puntoAuscultacion, setPuntoAuscultacion] = useState<string>("")
+
+  const handleFileChange = (file: File | null) => {
+    setSoploCardiaco(file)
+    setPuntoAuscultacion(file ? detectPunto(file.name) : "")
+  }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -33,7 +64,7 @@ export function DataUploadForm({ onBack, onProcess }: DataUploadFormProps) {
       alert("Por favor, suba el archivo de audio")
       return
     }
-    onProcess({ soploCardiaco })
+    onProcess({ soploCardiaco, puntoAuscultacion: puntoAuscultacion || undefined })
   }
 
   return (
@@ -82,13 +113,23 @@ export function DataUploadForm({ onBack, onProcess }: DataUploadFormProps) {
                   id="soplo"
                   type="file"
                   accept="audio/wav, audio/mpeg, .wav, .mp3"
-                  onChange={(e) => setSoploCardiaco(e.target.files?.[0] || null)}
+                  onChange={(e) => handleFileChange(e.target.files?.[0] || null)}
                   className="bg-white"
                 />
                 {soploCardiaco && (
                   <div className="flex items-center gap-2 text-sm text-[#1793a5] font-medium">
                     <Upload className="h-4 w-4" />
                     {soploCardiaco.name}
+                  </div>
+                )}
+                {soploCardiaco && (
+                  <div className="space-y-1 pt-1">
+                    <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Punto de Auscultación
+                    </Label>
+                    <div className={`border rounded-md px-3 py-2 text-sm font-medium ${puntoAuscultacion ? "bg-blue-50 border-[#1793a5] text-[#1793a5]" : "bg-gray-100 text-muted-foreground"}`}>
+                      {puntoAuscultacion || "No identificado (sufijo no reconocido)"}
+                    </div>
                   </div>
                 )}
               </div>

@@ -22,13 +22,20 @@ export function OwnerForm({ owner, onBack, onSave }: OwnerFormProps) {
   const [formData, setFormData] = useState({
     nombres: owner?.nombres || "",
     apellidos: owner?.apellidos || "",
+    tipoDocumento: owner?.tipoDocumento || "DNI",
     dni: owner?.dni || "",
     celular: owner?.celular || "",
     correo: owner?.correo || "",
     direccion: owner?.direccion || "",
     sexo: owner?.sexo || "Masculino",
-    fechaNacimiento: owner?.fechaNacimiento ? owner.fechaNacimiento.split("T")[0] : "", // Formato YYYY-MM-DD
+    fechaNacimiento: owner?.fechaNacimiento ? owner.fechaNacimiento.split("T")[0] : "",
+    ubigeo: owner?.ubigeo || "",
+    departamento: owner?.departamento || "",
+    provincia: owner?.provincia || "",
+    distrito: owner?.distrito || "",
   })
+
+  const maxLengthDoc = formData.tipoDocumento === "DNI" ? 8 : 12
 
   // Función para obtener el token del localStorage
   const getAuthToken = () => {
@@ -38,9 +45,54 @@ export function OwnerForm({ owner, onBack, onSave }: OwnerFormProps) {
     return null
   }
 
+  const handleUbigeoChange = async (value: string) => {
+    // Only allow digits
+    const digits = value.replace(/\D/g, "").slice(0, 6)
+    handleChange("ubigeo", digits)
+
+    if (digits.length === 6) {
+      const token = getAuthToken()
+      if (!token) return
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/ubigeo/${digits}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        if (res.ok) {
+          const data = await res.json()
+          setFormData((prev) => ({
+            ...prev,
+            ubigeo: digits,
+            departamento: data.departamento,
+            provincia: data.provincia,
+            distrito: data.distrito,
+          }))
+        } else {
+          setFormData((prev) => ({
+            ...prev,
+            ubigeo: digits,
+            departamento: "",
+            provincia: "",
+            distrito: "",
+          }))
+        }
+      } catch {
+        // ignore network errors for auto-complete
+      }
+    } else {
+      setFormData((prev) => ({
+        ...prev,
+        ubigeo: digits,
+        departamento: "",
+        provincia: "",
+        distrito: "",
+      }))
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
+    if (!confirm("¿Estás seguro que deseas guardar?")) return
+
     const token = getAuthToken()
     if (!token) {
         alert("Error de autenticación. Por favor, inicie sesión de nuevo.")
@@ -86,7 +138,7 @@ export function OwnerForm({ owner, onBack, onSave }: OwnerFormProps) {
     <Card className="max-w-3xl mx-auto bg-[#d0e8ed] border-[#1793a5]">
       <CardHeader>
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={onBack}>
+          <Button variant="ghost" size="icon" onClick={() => { if (confirm("¿Estás seguro que deseas cancelar?")) onBack() }}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <CardTitle className="text-2xl font-bold text-[#1793a5]">
@@ -122,14 +174,34 @@ export function OwnerForm({ owner, onBack, onSave }: OwnerFormProps) {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="dni">DNI *</Label>
+              <Label htmlFor="tipoDocumento">Tipo de Documento *</Label>
+              <Select
+                value={formData.tipoDocumento}
+                onValueChange={(value) => {
+                  handleChange("tipoDocumento", value)
+                  handleChange("dni", "")
+                }}
+              >
+                <SelectTrigger id="tipoDocumento" className="bg-white">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="DNI">DNI</SelectItem>
+                  <SelectItem value="Carnet de extranjería">Carnet de extranjería</SelectItem>
+                  <SelectItem value="Pasaporte">Pasaporte</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="dni">Número de Documento *</Label>
               <Input
                 id="dni"
                 value={formData.dni}
                 onChange={(e) => handleChange("dni", e.target.value)}
                 required
-                maxLength={8}
-                placeholder="12345678"
+                maxLength={maxLengthDoc}
+                placeholder={formData.tipoDocumento === "DNI" ? "12345678" : "Número de documento"}
                 className="bg-white"
               />
             </div>
@@ -193,13 +265,58 @@ export function OwnerForm({ owner, onBack, onSave }: OwnerFormProps) {
                 className="bg-white"
               />
             </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="ubigeo">Ubigeo</Label>
+              <Input
+                id="ubigeo"
+                value={formData.ubigeo}
+                onChange={(e) => handleUbigeoChange(e.target.value)}
+                maxLength={6}
+                placeholder="Ej: 150101"
+                className="bg-white"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="departamento">Departamento</Label>
+              <Input
+                id="departamento"
+                value={formData.departamento}
+                readOnly
+                placeholder="Se completa automáticamente"
+                className="bg-gray-100 cursor-not-allowed"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="provincia">Provincia</Label>
+              <Input
+                id="provincia"
+                value={formData.provincia}
+                readOnly
+                placeholder="Se completa automáticamente"
+                className="bg-gray-100 cursor-not-allowed"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="distrito">Distrito</Label>
+              <Input
+                id="distrito"
+                value={formData.distrito}
+                readOnly
+                placeholder="Se completa automáticamente"
+                className="bg-gray-100 cursor-not-allowed"
+              />
+            </div>
           </div>
 
           <div className="flex gap-3 justify-end pt-4">
             <Button
               type="button"
               variant="destructive"
-              onClick={onBack}
+              onClick={() => { if (confirm("¿Estás seguro que deseas cancelar?")) onBack() }}
               className="bg-red-600 hover:bg-red-700 text-white"
             >
               Cancelar

@@ -110,6 +110,7 @@ export function EvaluationsView({ dog, onBack, onNewEvaluation }: EvaluationsVie
                     <TableHead className="whitespace-nowrap">ID</TableHead>
                     <TableHead className="whitespace-nowrap">Fecha</TableHead>
                     <TableHead className="whitespace-nowrap">Resultado Machine Learning</TableHead>
+                    <TableHead className="whitespace-nowrap">Punto de Auscultación</TableHead>
                     <TableHead className="whitespace-nowrap">Categoría</TableHead>
                     <TableHead className="whitespace-nowrap">Grado Levine</TableHead>
                     <TableHead className="whitespace-nowrap">Descripción del grado</TableHead>
@@ -119,7 +120,7 @@ export function EvaluationsView({ dog, onBack, onNewEvaluation }: EvaluationsVie
                 <TableBody>
                   {paginatedEvaluations.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                      <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
                         No hay evaluaciones registradas
                       </TableCell>
                     </TableRow>
@@ -142,6 +143,9 @@ export function EvaluationsView({ dog, onBack, onNewEvaluation }: EvaluationsVie
                           >
                             {evaluation.resultado}
                           </span>
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap text-sm">
+                          {evaluation.puntoAuscultacion ?? "—"}
                         </TableCell>
                         <TableCell className="whitespace-nowrap font-medium">
                           {evaluation.categoria ?? "—"}

@@ -3,7 +3,7 @@ from flask import Blueprint, request, jsonify
 from app import db
 from app.config import Config
 from werkzeug.utils import secure_filename
-from app.models import Owner, Dog, User, Evaluation
+from app.models import Owner, Dog, User, Evaluation, Breed, Ubigeo
 from flask_jwt_extended import jwt_required, get_jwt
 from sqlalchemy.exc import IntegrityError
 import uuid
@@ -31,13 +31,46 @@ def serialize_owner(o: Owner):
         "id": o.id,
         "nombres": o.nombres,
         "apellidos": o.apellidos,
+        "tipoDocumento": o.tipo_documento,
         "dni": o.dni,
         "celular": o.celular,
         "correo": o.correo,
         "direccion": o.direccion,
         "sexo": o.sexo,
         "fechaNacimiento": o.fechaNacimiento.isoformat() if o.fechaNacimiento else None,
+        "ubigeo": o.ubigeo,
+        "departamento": o.departamento,
+        "provincia": o.provincia,
+        "distrito": o.distrito,
     }
+
+
+# ===================================================
+# --- Ruta para Ubigeo ---
+# ===================================================
+
+@api.route('/ubigeo/<string:codigo>', methods=['GET'])
+@jwt_required()
+def get_ubigeo(codigo):
+    ubigeo = db.session.get(Ubigeo, codigo)
+    if not ubigeo:
+        return jsonify({"msg": "Código ubigeo no encontrado"}), 404
+    return jsonify({
+        "codigo": ubigeo.codigo,
+        "departamento": ubigeo.departamento,
+        "provincia": ubigeo.provincia,
+        "distrito": ubigeo.distrito,
+    }), 200
+
+# ===================================================
+# --- Ruta para Razas (Breed) ---
+# ===================================================
+
+@api.route('/breeds', methods=['GET'])
+@jwt_required()
+def get_breeds():
+    breeds = db.session.execute(db.select(Breed).order_by(Breed.id)).scalars().all()
+    return jsonify([{"id": b.id, "nombre": b.nombre} for b in breeds]), 200
 
 # ===================================================
 # --- Rutas CRUD para Propietarios (Owner) ---
@@ -48,19 +81,24 @@ def serialize_owner(o: Owner):
 def create_owner():
     data = request.get_json()
     
-    if not all(k in data for k in ["nombres", "apellidos", "dni", "correo"]):
+    if not all(k in data for k in ["nombres", "apellidos", "tipoDocumento", "dni", "correo"]):
         return jsonify({"msg": "Faltan campos requeridos"}), 400
 
     new_owner = Owner(
         # id se genera por default en el modelo
         nombres=data['nombres'],
         apellidos=data['apellidos'],
+        tipo_documento=data['tipoDocumento'],
         dni=data['dni'],
         celular=data.get('celular'),
         correo=data['correo'],
         direccion=data.get('direccion'),
         sexo=data.get('sexo'),
-        fechaNacimiento=datetime.datetime.strptime(data['fechaNacimiento'], '%Y-%m-%d').date() if data.get('fechaNacimiento') else None
+        fechaNacimiento=datetime.datetime.strptime(data['fechaNacimiento'], '%Y-%m-%d').date() if data.get('fechaNacimiento') else None,
+        ubigeo=data.get('ubigeo'),
+        departamento=data.get('departamento'),
+        provincia=data.get('provincia'),
+        distrito=data.get('distrito'),
     )
 
     try:
@@ -99,11 +137,16 @@ def update_owner(owner_id):
     data = request.get_json()
     owner.nombres = data.get('nombres', owner.nombres)
     owner.apellidos = data.get('apellidos', owner.apellidos)
+    owner.tipo_documento = data.get('tipoDocumento', owner.tipo_documento)
     owner.dni = data.get('dni', owner.dni)
     owner.celular = data.get('celular', owner.celular)
     owner.correo = data.get('correo', owner.correo)
     owner.direccion = data.get('direccion', owner.direccion)
     owner.sexo = data.get('sexo', owner.sexo)
+    owner.ubigeo = data.get('ubigeo', owner.ubigeo)
+    owner.departamento = data.get('departamento', owner.departamento)
+    owner.provincia = data.get('provincia', owner.provincia)
+    owner.distrito = data.get('distrito', owner.distrito)
     
     fecha_str = data.get('fechaNacimiento')
     if fecha_str is not None:
@@ -128,6 +171,9 @@ def delete_owner(owner_id):
     owner = db.session.get(Owner, owner_id)
     if not owner:
         return jsonify({"msg": "Propietario no encontrado"}), 404
+
+    if owner.dogs:
+        return jsonify({"msg": "No se puede eliminar: el propietario tiene perros registrados"}), 409
 
     try:
         db.session.delete(owner)
@@ -356,6 +402,7 @@ def create_evaluation():
         categoria=clasificacion['categoria'],
         grado_levine=clasificacion['grado_levine'],
         descripcion_grado=clasificacion['descripcion_grado'],
+        punto_auscultacion=eval_data.get('puntoAuscultacion'),
         dog_id=dog_id
     )
 

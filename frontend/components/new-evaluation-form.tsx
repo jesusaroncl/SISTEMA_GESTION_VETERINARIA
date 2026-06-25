@@ -108,17 +108,25 @@ export function NewEvaluationForm({ data, onBack, onEvaluate }: NewEvaluationFor
           </div>
 
           {/* Tipo de evaluación + resultado destacado */}
-          <div className="flex items-center justify-between bg-white border rounded-lg px-4 py-3">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <span className="font-medium text-foreground">Tipo de evaluación:</span>
-              <Badge variant="outline" className="border-[#1793a5] text-[#1793a5]">Soplo Cardíaco</Badge>
+          <div className="bg-white border rounded-lg px-4 py-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <span className="font-medium text-foreground">Tipo de evaluación:</span>
+                <Badge variant="outline" className="border-[#1793a5] text-[#1793a5]">Soplo Cardíaco</Badge>
+              </div>
+              <div className="flex items-center gap-2 text-sm">
+                <span className="font-medium text-muted-foreground">Resultado Machine Learning:</span>
+                <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold border ${estilos.badge}`}>
+                  {data.soploCardiaco}
+                </span>
+              </div>
             </div>
-            <div className="flex items-center gap-2 text-sm">
-              <span className="font-medium text-muted-foreground">Resultado Machine Learning:</span>
-              <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold border ${estilos.badge}`}>
-                {data.soploCardiaco}
-              </span>
-            </div>
+            {data.puntoAuscultacion && (
+              <div className="flex items-center gap-2 text-sm border-t pt-2">
+                <span className="font-medium text-muted-foreground">Punto de Auscultación:</span>
+                <span className="font-semibold text-[#1793a5]">{data.puntoAuscultacion}</span>
+              </div>
+            )}
           </div>
 
           {/* Tabla de clasificación del soplo cardíaco */}

@@ -82,29 +82,42 @@ export function OwnersTable({ role, onNewOwner, onEditOwner, onViewDogs }: Owner
 
   // Función de eliminación
   const handleDelete = async (id: string) => {
-    if (confirm("¿Está seguro de eliminar este propietario?")) {
-      const token = getAuthToken()
-      if (!token) return
+    const token = getAuthToken()
+    if (!token) return
 
-      try {
-        const response = await fetch(`${API_BASE_URL}/api/owners/${id}`, {
-          method: "DELETE",
-          headers: {
-            "Authorization": `Bearer ${token}`,
-          },
-        })
-
-        if (!response.ok) {
-          const data = await response.json()
-          alert(data.msg || "Error al eliminar el propietario.")
+    // Verificar si tiene perros antes de pedir confirmación
+    try {
+      const dogsRes = await fetch(`${API_BASE_URL}/api/owners/${id}/dogs`, {
+        headers: { "Authorization": `Bearer ${token}` },
+      })
+      if (dogsRes.ok) {
+        const dogs = await dogsRes.json()
+        if (dogs.length > 0) {
+          alert("No se puede eliminar: el propietario tiene perros registrados.")
           return
         }
-
-        // Éxito: Recargar la lista de propietarios
-        fetchOwners()
-      } catch (e) {
-        alert("Error de conexión al eliminar.")
       }
+    } catch {
+      // Si falla la verificación, el backend igual bloqueará
+    }
+
+    if (!confirm("¿Estás seguro que deseas eliminar?")) return
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/owners/${id}`, {
+        method: "DELETE",
+        headers: { "Authorization": `Bearer ${token}` },
+      })
+
+      if (!response.ok) {
+        const data = await response.json()
+        alert(data.msg || "Error al eliminar el propietario.")
+        return
+      }
+
+      fetchOwners()
+    } catch (e) {
+      alert("Error de conexión al eliminar.")
     }
   }
 

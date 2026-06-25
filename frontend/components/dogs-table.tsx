@@ -98,7 +98,7 @@ export function DogsTable({
 
   // Eliminar (solo para asistente)
   const handleDelete = async (id: string) => {
-    if (confirm("¿Está seguro de eliminar este perro?")) {
+    if (confirm("¿Estás seguro que deseas eliminar?")) {
       const token = getAuthToken()
       if (!token) {
           alert("Error de autenticación");

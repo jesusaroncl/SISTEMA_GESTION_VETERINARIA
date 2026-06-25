@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -21,6 +21,19 @@ type DogFormProps = {
 }
 
 export function DogForm({ dog, ownerId, ownerName, onBack, onSave }: DogFormProps) {
+  const [breeds, setBreeds] = useState<{ id: number; nombre: string }[]>([])
+
+  useEffect(() => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null
+    if (!token) return
+    fetch(`${API_BASE_URL}/api/breeds`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => r.json())
+      .then((data) => setBreeds(data))
+      .catch(() => {})
+  }, [])
+
   const [formData, setFormData] = useState({
     especie: dog?.especie || "Canino", // Default 'Canino'
     nombre: dog?.nombre || "",
@@ -36,6 +49,7 @@ export function DogForm({ dog, ownerId, ownerName, onBack, onSave }: DogFormProp
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!confirm("¿Estás seguro que deseas guardar?")) return
 
     const token = getAuthToken()
     if (!token) {
@@ -79,7 +93,7 @@ export function DogForm({ dog, ownerId, ownerName, onBack, onSave }: DogFormProp
     <Card className="max-w-2xl mx-auto">
       <CardHeader>
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={onBack}>
+          <Button variant="ghost" size="icon" onClick={() => { if (confirm("¿Estás seguro que deseas cancelar?")) onBack() }}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
@@ -119,13 +133,18 @@ export function DogForm({ dog, ownerId, ownerName, onBack, onSave }: DogFormProp
 
             <div className="space-y-2">
               <Label htmlFor="raza">Raza *</Label>
-              <Input
-                id="raza"
-                value={formData.raza}
-                onChange={(e) => handleChange("raza", e.target.value)}
-                required
-                placeholder="Ingrese la raza"
-              />
+              <Select value={formData.raza} onValueChange={(value) => handleChange("raza", value)}>
+                <SelectTrigger id="raza">
+                  <SelectValue placeholder="Seleccione una raza..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {breeds.map((b) => (
+                    <SelectItem key={b.id} value={b.nombre}>
+                      {b.nombre}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="space-y-2">
@@ -167,7 +186,7 @@ export function DogForm({ dog, ownerId, ownerName, onBack, onSave }: DogFormProp
           </div>
 
           <div className="flex gap-3 justify-end pt-4">
-            <Button type="button" variant="outline" onClick={onBack}>
+            <Button type="button" variant="outline" onClick={() => { if (confirm("¿Estás seguro que deseas cancelar?")) onBack() }}>
               Cancelar
             </Button>
             <Button type="submit" className="gap-2">

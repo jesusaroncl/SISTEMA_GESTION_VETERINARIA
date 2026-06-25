@@ -6,6 +6,18 @@ import uuid # Necesario para los IDs de Owner y Dog
 # --- Definiciones de Tipos de Roles ---
 ROLES = ["asistente", "veterinario"]
 
+class Ubigeo(db.Model):
+    __tablename__ = 'ubigeo'
+    codigo = db.Column(db.String(6), primary_key=True)
+    departamento = db.Column(db.String(100), nullable=False)
+    provincia = db.Column(db.String(100), nullable=False)
+    distrito = db.Column(db.String(100), nullable=False)
+
+class Breed(db.Model):
+    __tablename__ = 'breeds'
+    id = db.Column(db.Integer, primary_key=True)
+    nombre = db.Column(db.String(100), nullable=False, unique=True)
+
 class User(db.Model):
     __tablename__ = 'users'
     id = db.Column(db.Integer, primary_key=True)
@@ -32,13 +44,18 @@ class Owner(db.Model):
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     nombres = db.Column(db.String(100), nullable=False)
     apellidos = db.Column(db.String(100), nullable=False)
-    dni = db.Column(db.String(8), unique=True, nullable=False)
+    tipo_documento = db.Column(db.String(50), nullable=False, default='DNI')
+    dni = db.Column(db.String(20), unique=True, nullable=False)
     celular = db.Column(db.String(9))
     correo = db.Column(db.String(120), unique=True, nullable=False)
     direccion = db.Column(db.String(255))
     sexo = db.Column(db.String(20))
     fechaNacimiento = db.Column(db.Date)
-    
+    ubigeo = db.Column(db.String(6), nullable=True)
+    departamento = db.Column(db.String(100), nullable=True)
+    provincia = db.Column(db.String(100), nullable=True)
+    distrito = db.Column(db.String(100), nullable=True)
+
     # Relación: Un propietario puede tener muchos perros.
     # cascade="all, delete-orphan": Si se borra un Owner, se borran sus Dogs.
     dogs = db.relationship('Dog', backref='owner', lazy=True, cascade="all, delete-orphan")
@@ -84,6 +101,9 @@ class Evaluation(db.Model):
     grado_levine = db.Column(db.String(20), nullable=True)    # "NaN" | "I / II" | "III"
     descripcion_grado = db.Column(db.Text, nullable=True)     # descripción clínica del grado
 
+    # Punto de auscultación detectado desde el nombre del archivo
+    punto_auscultacion = db.Column(db.String(100), nullable=True)
+
     # Foreign Key a la tabla Dog
     dog_id = db.Column(db.String(36), db.ForeignKey('dogs.id'), nullable=False)
 
@@ -98,4 +118,5 @@ class Evaluation(db.Model):
             "categoria": self.categoria,
             "gradoLevine": self.grado_levine,
             "descripcionGrado": self.descripcion_grado,
+            "puntoAuscultacion": self.punto_auscultacion,
         }
