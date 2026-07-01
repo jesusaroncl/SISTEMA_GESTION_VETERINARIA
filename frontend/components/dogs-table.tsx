@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Search, Plus, Edit, Trash2, FileText } from "lucide-react"
 import type { Dog } from "@/lib/types"
 
-const API_BASE_URL = "http://127.0.0.1:5000"
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:5000"
 
 type DogsTableProps = {
   ownerId: string

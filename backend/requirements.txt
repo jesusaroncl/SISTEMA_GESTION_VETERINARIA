@@ -1,4 +1,5 @@
 Flask
+gunicorn
 Flask-SQLAlchemy
 psycopg2-binary  # Conector de PostgreSQL
 Flask-Migrate    # Para manejar migraciones de BD
