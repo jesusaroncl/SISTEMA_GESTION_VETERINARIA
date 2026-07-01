@@ -46,11 +46,10 @@ export type UploadedData = {
 
 export type EvaluationData = {
   raza: string
-  edad: number
+  edad: number | null
   gradoLevine: string
   descripcionGrado: string
   esRiesgo: boolean
   datosResultado: string
-  edad: number | null
   puntoAuscultacion?: string
 }
