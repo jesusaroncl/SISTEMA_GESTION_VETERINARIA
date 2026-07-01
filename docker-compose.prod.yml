@@ -2,8 +2,8 @@
 # Uso: docker compose -f docker-compose.prod.yml --env-file .env up -d --build
 #
 # Nginx Proxy Manager (en el mismo servidor o en la red):
-#   - Frontend  →  http://IP_DEL_SERVIDOR:3000
-#   - Backend   →  http://IP_DEL_SERVIDOR:5000
+#   - Frontend  →  http://IP_DEL_SERVIDOR:7000
+#   - Backend   →  http://IP_DEL_SERVIDOR:9000
 #
 # NEXT_PUBLIC_API_BASE_URL debe ser la URL pública HTTPS del backend (ver .env.example)
 
@@ -37,7 +37,7 @@ services:
     volumes:
       - uploads_data:/usr/src/app/uploads
     ports:
-      - "${BACKEND_PORT:-5000}:5000"
+      - "${BACKEND_PORT:-9000}:5000"
     depends_on:
       db:
         condition: service_healthy
@@ -49,7 +49,7 @@ services:
         NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL}
     restart: always
     ports:
-      - "${FRONTEND_PORT:-3000}:3000"
+      - "${FRONTEND_PORT:-7000}:3000"
     depends_on:
       - backend
 
