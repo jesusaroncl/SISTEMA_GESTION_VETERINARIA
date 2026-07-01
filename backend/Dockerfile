@@ -23,8 +23,8 @@ ENV FLASK_APP=app
 # Copiar el nuevo script de entrada
 COPY docker-entrypoint.sh /usr/src/app/docker-entrypoint.sh
 
-# Hacerlo ejecutable
-RUN chmod +x /usr/src/app/docker-entrypoint.sh
+# Convertir saltos de línea Windows a Unix y hacerlo ejecutable
+RUN sed -i 's/\r//' /usr/src/app/docker-entrypoint.sh && chmod +x /usr/src/app/docker-entrypoint.sh
 
 # 9. Usar ENTRYPOINT para ejecutar el script de inicio
 ENTRYPOINT ["/usr/src/app/docker-entrypoint.sh"]
