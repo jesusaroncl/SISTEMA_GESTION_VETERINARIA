@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useMemo, useEffect, useCallback } from "react"
+import { calculateAgeAtDate } from "@/lib/date-utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -73,15 +74,8 @@ export function DogsTable({
 
   // Calcular edad
   const calculateAge = (birthDate: string) => {
-    if (!birthDate) return "N/A";
-    const today = new Date()
-    const birth = new Date(birthDate)
-    let age = today.getFullYear() - birth.getFullYear()
-    const monthDiff = today.getMonth() - birth.getMonth()
-    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
-      age--
-    }
-    return age < 0 ? 0 : age
+    const age = calculateAgeAtDate(birthDate)
+    return age != null ? age : "N/A"
   }
 
   const filteredDogs = useMemo(() => {

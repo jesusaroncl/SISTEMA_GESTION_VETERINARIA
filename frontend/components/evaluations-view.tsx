@@ -8,6 +8,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ArrowLeft, Plus } from "lucide-react"
 import type { Evaluation, Dog } from "@/lib/types"
+import { resolveDescripcionGrado, resolveGradoLevine } from "@/lib/grado-levine"
+import { calculateAgeAtDate, formatDateDDMMYYYY } from "@/lib/date-utils"
 
 // Definir URL de la API
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
@@ -66,6 +68,13 @@ export function EvaluationsView({ dog, onBack, onNewEvaluation }: EvaluationsVie
   }, [fetchEvaluations]);
 
 
+  const getEdadAtEvaluation = (evaluation: Evaluation) => {
+    if (evaluation.edadAtEvaluation != null) return evaluation.edadAtEvaluation
+    return calculateAgeAtDate(dog.fechaNacimiento, evaluation.fecha)
+  }
+
+  const formatIdCorto = (id: string) => id.replace(/-/g, "").substring(0, 8).toUpperCase()
+
   const totalPages = Math.ceil(evaluations.length / itemsPerPage)
   const startIndex = (currentPage - 1) * itemsPerPage
   const paginatedEvaluations = evaluations.slice(startIndex, startIndex + itemsPerPage)
@@ -103,64 +112,62 @@ export function EvaluationsView({ dog, onBack, onNewEvaluation }: EvaluationsVie
 
         {!loading && !error && (
           <>
-            <div className="rounded-md border overflow-x-auto">
+            <div className="rounded-md border border-[#1793a5]/30 overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow>
-                    <TableHead className="whitespace-nowrap">ID</TableHead>
-                    <TableHead className="whitespace-nowrap">Fecha</TableHead>
-                    <TableHead className="whitespace-nowrap">Resultado Machine Learning</TableHead>
-                    <TableHead className="whitespace-nowrap">Punto de Auscultación</TableHead>
-                    <TableHead className="whitespace-nowrap">Categoría</TableHead>
-                    <TableHead className="whitespace-nowrap">Grado Levine</TableHead>
-                    <TableHead className="whitespace-nowrap">Descripción del grado</TableHead>
-                    <TableHead className="whitespace-nowrap">Comentarios</TableHead>
+                  <TableRow className="hover:bg-transparent border-0">
+                    <TableHead className="bg-[#1793a5] text-white font-bold uppercase text-xs tracking-wide whitespace-nowrap w-28 border-r border-white/20">
+                      ID
+                    </TableHead>
+                    <TableHead className="bg-[#1793a5] text-white font-bold uppercase text-xs tracking-wide whitespace-nowrap w-32 border-r border-white/20">
+                      Fecha
+                    </TableHead>
+                    <TableHead className="bg-[#1793a5] text-white font-bold uppercase text-xs tracking-wide whitespace-nowrap w-44 border-r border-white/20">
+                      Tipo de Evaluación
+                    </TableHead>
+                    <TableHead className="bg-[#1793a5] text-white font-bold uppercase text-xs tracking-wide">
+                      Resultado
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {paginatedEvaluations.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                      <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
                         No hay evaluaciones registradas
                       </TableCell>
                     </TableRow>
                   ) : (
-                    paginatedEvaluations.map((evaluation) => (
-                      <TableRow key={evaluation.id}>
-                        <TableCell className="font-medium">{evaluation.id.substring(0, 8)}...</TableCell>
-                        <TableCell className="whitespace-nowrap">
-                          {new Date(evaluation.fecha).toLocaleDateString("es-ES")}
-                        </TableCell>
-                        <TableCell>
-                          <span
-                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${
-                              evaluation.resultado === "Normal"
-                                ? "bg-green-100 text-green-800"
-                                : evaluation.resultado === "Ligeramente audible"
-                                ? "bg-yellow-100 text-yellow-800"
-                                : "bg-red-100 text-red-800"
-                            }`}
-                          >
-                            {evaluation.resultado}
-                          </span>
-                        </TableCell>
-                        <TableCell className="whitespace-nowrap text-sm">
-                          {evaluation.puntoAuscultacion ?? "—"}
-                        </TableCell>
-                        <TableCell className="whitespace-nowrap font-medium">
-                          {evaluation.categoria ?? "—"}
-                        </TableCell>
-                        <TableCell className="text-center font-mono whitespace-nowrap">
-                          {evaluation.gradoLevine ?? "—"}
-                        </TableCell>
-                        <TableCell className="max-w-xs">
-                          {evaluation.descripcionGrado ?? "—"}
-                        </TableCell>
-                        <TableCell className="max-w-sm whitespace-pre-wrap">
-                          {evaluation.comentarios}
-                        </TableCell>
-                      </TableRow>
-                    ))
+                    paginatedEvaluations.map((evaluation) => {
+                      const edad = getEdadAtEvaluation(evaluation)
+                      const grado = resolveGradoLevine(evaluation.gradoLevine, evaluation.resultado)
+                      const descripcion = resolveDescripcionGrado(grado, evaluation.descripcionGrado).toLowerCase()
+                      const edadTexto = edad !== null ? `${edad} años` : "edad desconocida"
+
+                      return (
+                        <TableRow key={evaluation.id} className="bg-white hover:bg-gray-50">
+                          <TableCell className="font-mono text-sm font-medium text-foreground whitespace-nowrap">
+                            {formatIdCorto(evaluation.id)}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap text-sm">
+                            {formatDateDDMMYYYY(evaluation.fecha)}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap text-sm font-medium uppercase">
+                            Soplo Cardíaco
+                          </TableCell>
+                          <TableCell className="whitespace-normal min-w-[320px]">
+                            <p className="text-sm leading-relaxed text-foreground">
+                              Paciente veterinario de{" "}
+                              <span className="font-semibold text-red-600">{edadTexto}</span>
+                              {" "}con el grado Levine{" "}
+                              <span className="font-semibold text-red-600">{grado}</span>
+                              {" "}que tiene como descripción{" "}
+                              <span className="font-semibold text-red-600">{descripcion}</span>
+                            </p>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })
                   )}
                 </TableBody>
               </Table>

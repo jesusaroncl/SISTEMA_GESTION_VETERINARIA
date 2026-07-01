@@ -92,14 +92,14 @@ class Evaluation(db.Model):
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     fecha = db.Column(db.Date, nullable=False, default=datetime.date.today)
 
-    # "Normal" | "Riesgo Moderado" | "Alto Riesgo"
+    # Grado Levine (AUSENTE | I /VI | II /VI | III /VI)
     resultado = db.Column(db.String(100), nullable=False)
     comentarios = db.Column(db.Text, nullable=True)
 
-    # Clasificación del soplo cardíaco (tabla ACVIM)
-    categoria = db.Column(db.String(50), nullable=True)       # "Normal" | "Ligeramente audible" | "Audible"
-    grado_levine = db.Column(db.String(20), nullable=True)    # "NaN" | "I / II" | "III"
-    descripcion_grado = db.Column(db.Text, nullable=True)     # descripción clínica del grado
+    # Clasificación del soplo cardíaco — Grado Levine + descripción
+    categoria = db.Column(db.String(50), nullable=True)       # obsoleto, no se usa
+    grado_levine = db.Column(db.String(20), nullable=True)    # "AUSENTE" | "I /VI" | "II /VI" | "III /VI"
+    descripcion_grado = db.Column(db.Text, nullable=True)
 
     # Punto de auscultación detectado desde el nombre del archivo
     punto_auscultacion = db.Column(db.String(100), nullable=True)

@@ -36,6 +36,7 @@ export type Evaluation = {
   gradoLevine?: string
   descripcionGrado?: string
   puntoAuscultacion?: string
+  edadAtEvaluation?: number | null
 }
 
 export type UploadedData = {
@@ -46,8 +47,10 @@ export type UploadedData = {
 export type EvaluationData = {
   raza: string
   edad: number
-  soploCardiaco: string
+  gradoLevine: string
+  descripcionGrado: string
   esRiesgo: boolean
   datosResultado: string
+  edad: number | null
   puntoAuscultacion?: string
 }

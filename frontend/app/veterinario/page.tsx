@@ -234,7 +234,7 @@ export default function VeterinarioPage() {
             isProcessing ? (
                 <div className="text-center p-8">
                     <p className="text-lg font-semibold">Procesando audio...</p>
-                    <p>El modelo de IA está analizando el soplo cardiaco. Esto puede tardar un momento.</p>
+                    <p>El modelo está analizando el soplo cardíaco. Esto puede tardar un momento.</p>
                 </div>
             ) : (
                 <DataUploadForm onBack={handleBackToEvaluations} onProcess={handleDataUploaded} />

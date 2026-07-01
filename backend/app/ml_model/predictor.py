@@ -108,10 +108,10 @@ def predecir_soplo_cardiaco(audio_path):
         
     fase_predicha = predictor_instancia.predict(audio_path)
     
-    # Mapear fase ACVIM → categoría clínica de la tabla de clasificación
+    # Mapear fase ACVIM → Grado Levine (sin categoría clínica intermedia)
     if fase_predicha == "A":
-        return "Normal"
+        return "AUSENTE"
     elif fase_predicha == "B":
-        return "Ligeramente audible"
+        return "I /VI"
     else:  # Fases C o D
-        return "Audible"
+        return "III /VI"

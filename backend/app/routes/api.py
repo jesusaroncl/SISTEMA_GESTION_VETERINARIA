@@ -282,12 +282,44 @@ def allowed_file(filename):
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 # Función para calcular la edad (la necesitamos del frontend)
-def calculate_age(birth_date_obj):
+def calculate_age(birth_date_obj, reference_date=None):
+    """Calcula la edad en años completos. Devuelve None si no hay fecha de nacimiento."""
     if not birth_date_obj:
-        return 0
-    today = datetime.date.today()
-    age = today.year - birth_date_obj.year - ((today.month, today.day) < (birth_date_obj.month, birth_date_obj.day))
-    return age
+        return None
+    ref = reference_date or datetime.date.today()
+    age = ref.year - birth_date_obj.year
+    if (ref.month, ref.day) < (birth_date_obj.month, birth_date_obj.day):
+        age -= 1
+    return max(age, 0)
+
+# Sistema de clasificación del soplo cardíaco — solo Grado Levine + descripción
+GRADOS_LEVINE = {
+    "AUSENTE": "Ausencia del soplo cardíaco",
+    "I /VI": "Si es apenas audible y no se escuchó/presentó o no fue registrado en todas las ubicaciones de auscultación.",
+    "II /VI": "Si es suave, pero fácilmente audible en todas las ubicaciones de auscultación.",
+    "III /VI": "Si es moderadamente intenso o intenso.",
+}
+
+MAPEO_CATEGORIA_A_GRADO = {
+    "Normal": "AUSENTE",
+    "Ligeramente audible": "I /VI",
+    "Audible": "III /VI",
+}
+
+def _normalizar_grado_levine(valor):
+    """Convierte categorías antiguas (Normal/Audible/…) al grado Levine correspondiente."""
+    if not valor:
+        return "AUSENTE"
+    if valor in GRADOS_LEVINE:
+        return valor
+    return MAPEO_CATEGORIA_A_GRADO.get(valor, "AUSENTE")
+
+def _clasificacion_por_grado(grado_levine):
+    grado = _normalizar_grado_levine(grado_levine)
+    return {
+        "grado_levine": grado,
+        "descripcion_grado": GRADOS_LEVINE[grado],
+    }
 
 @api.route('/dogs/<string:dog_id>/evaluate_audio', methods=['POST'])
 @role_required('veterinario')
@@ -319,8 +351,9 @@ def evaluate_dog_audio(dog_id):
             # 3. Llamar al modelo de ML (pasamos la RUTA del audio)
             prediccion = predecir_soplo_cardiaco(audio_path) 
             
-            # 4. Determinar el riesgo ("Normal" = sin riesgo, resto = riesgo)
-            es_riesgo = prediccion != "Normal"
+            # 4. Normalizar a grado Levine (sin categorías antiguas)
+            clasificacion = _clasificacion_por_grado(prediccion)
+            es_riesgo = clasificacion["grado_levine"] != "AUSENTE"
 
             # 5. Calcular datos para el frontend
             edad = calculate_age(dog.fechaNacimiento)
@@ -328,9 +361,10 @@ def evaluate_dog_audio(dog_id):
             evaluation_data = {
                 "raza": dog.raza,
                 "edad": edad,
-                "soploCardiaco": prediccion, # El resultado del modelo (ej: "Alto Riesgo")
+                "gradoLevine": clasificacion["grado_levine"],
+                "descripcionGrado": clasificacion["descripcion_grado"],
                 "esRiesgo": es_riesgo,
-                "datosResultado": f"paciente con predicción de soplo (IA): {prediccion}"
+                "datosResultado": f"Grado Levine {clasificacion['grado_levine']}: {clasificacion['descripcion_grado']}"
             }
             
             # 6. Limpiar el archivo de audio temporal
@@ -351,26 +385,6 @@ def evaluate_dog_audio(dog_id):
 # --- Rutas CRUD para Evaluaciones (Evaluation) ---
 # ===================================================
 
-# Mapa de clasificación ACVIM del soplo cardíaco
-# Las claves coinciden exactamente con lo que retorna predictor.py
-CLASIFICACION_SOPLO = {
-    "Normal": {
-        "categoria": "Normal",
-        "grado_levine": "NaN",
-        "descripcion_grado": "Ausencia del soplo cardíaco",
-    },
-    "Ligeramente audible": {
-        "categoria": "Ligeramente audible",
-        "grado_levine": "I / II",
-        "descripcion_grado": "El soplo más tenue que puede escucharse con certeza / Soplo leve",
-    },
-    "Audible": {
-        "categoria": "Audible",
-        "grado_levine": "III",
-        "descripcion_grado": "Soplo con intensidad moderada",
-    },
-}
-
 @api.route('/evaluations', methods=['POST'])
 @role_required('veterinario')
 def create_evaluation():
@@ -385,21 +399,27 @@ def create_evaluation():
     if not dog:
         return jsonify({"msg": "Perro no encontrado"}), 404
 
-    prediccion_ia = eval_data.get('soploCardiaco')  # "Normal" | "Ligeramente audible" | "Audible"
-    es_riesgo_bool = prediccion_ia != "Normal"
+    grado_levine = _normalizar_grado_levine(
+        eval_data.get('gradoLevine') or eval_data.get('soploCardiaco')
+    )
+    if not eval_data.get('gradoLevine') and not eval_data.get('soploCardiaco'):
+        return jsonify({"msg": "Falta el grado Levine en evaluationData"}), 400
 
-    clasificacion = CLASIFICACION_SOPLO.get(prediccion_ia, CLASIFICACION_SOPLO["Normal"])
+    es_riesgo_bool = grado_levine != "AUSENTE"
+    clasificacion = _clasificacion_por_grado(grado_levine)
+    edad = calculate_age(dog.fechaNacimiento, datetime.date.today())
+    edad_texto = f"{edad} años" if edad is not None else "edad desconocida"
 
     comentarios_str = (
-        f"Paciente de {eval_data.get('edad')} años, raza {eval_data.get('raza')}. "
-        f"Predicción Machine Learning: {prediccion_ia} — Grado Levine: {clasificacion['grado_levine']}. "
+        f"Paciente de {edad_texto}, raza {eval_data.get('raza')}. "
+        f"Grado Levine: {clasificacion['grado_levine']}. "
+        f"{clasificacion['descripcion_grado']} "
         f"{'Se recomienda seguimiento inmediato.' if es_riesgo_bool else 'Continuar con monitoreo regular.'}"
     )
 
     new_evaluation = Evaluation(
-        resultado=prediccion_ia,
+        resultado=clasificacion['grado_levine'],
         comentarios=comentarios_str,
-        categoria=clasificacion['categoria'],
         grado_levine=clasificacion['grado_levine'],
         descripcion_grado=clasificacion['descripcion_grado'],
         punto_auscultacion=eval_data.get('puntoAuscultacion'),
@@ -409,7 +429,11 @@ def create_evaluation():
     try:
         db.session.add(new_evaluation)
         db.session.commit()
-        return jsonify(new_evaluation.serialize()), 201
+        response = {
+            **new_evaluation.serialize(),
+            "edadAtEvaluation": calculate_age(dog.fechaNacimiento, new_evaluation.fecha),
+        }
+        return jsonify(response), 201
     except Exception as e:
         db.session.rollback()
         return jsonify({"msg": "Error al guardar la evaluación", "error": str(e)}), 500
@@ -426,5 +450,11 @@ def get_evaluations_for_dog(dog_id):
     evals = db.session.execute(
         db.select(Evaluation).filter_by(dog_id=dog_id).order_by(Evaluation.fecha.desc())
     ).scalars().all()
-    
-    return jsonify([e.serialize() for e in evals]), 200
+
+    return jsonify([
+        {
+            **e.serialize(),
+            "edadAtEvaluation": calculate_age(dog.fechaNacimiento, e.fecha),
+        }
+        for e in evals
+    ]), 200

@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { ArrowLeft } from "lucide-react"
 import type { EvaluationData } from "@/lib/types"
+import { GRADO_ESTILOS, resolveDescripcionGrado, resolveGradoLevine } from "@/lib/grado-levine"
 
 type NewEvaluationFormProps = {
   data: EvaluationData
@@ -14,60 +15,18 @@ type NewEvaluationFormProps = {
   onEvaluate: (data: EvaluationData) => void
 }
 
-// Filas de la tabla de clasificación — igual a TABLE I de la referencia clínica
-type FilaClasificacion = {
-  categoria: string
-  rowspanCategoria: number   // cuántas filas ocupa la celda de categoría
-  grado: string
-  descripcion: string
-  mlKey: string              // a qué resultado ML corresponde esta fila
-}
-
-const TABLA_CLASIFICACION: FilaClasificacion[] = [
-  {
-    categoria: "Normal",
-    rowspanCategoria: 1,
-    grado: "NaN",
-    descripcion: "Ausencia del soplo cardíaco",
-    mlKey: "Normal",
-  },
-  {
-    categoria: "Ligeramente audible",
-    rowspanCategoria: 2,
-    grado: "I",
-    descripcion: "El soplo más tenue que puede escucharse con certeza",
-    mlKey: "Ligeramente audible",
-  },
-  {
-    categoria: "",          // celda fusionada con la fila anterior
-    rowspanCategoria: 0,
-    grado: "II",
-    descripcion: "Soplo leve",
-    mlKey: "Ligeramente audible",
-  },
-  {
-    categoria: "Audible",
-    rowspanCategoria: 1,
-    grado: "III",
-    descripcion: "Soplo con intensidad moderada",
-    mlKey: "Audible",
-  },
-]
-
-const RESULTADO_ESTILOS: Record<string, { header: string; row: string; badge: string }> = {
-  "Normal":               { header: "bg-green-100 text-green-800",  row: "bg-green-50 border-l-4 border-green-500",   badge: "bg-green-100 text-green-800 border-green-300" },
-  "Ligeramente audible":  { header: "bg-yellow-100 text-yellow-800",row: "bg-yellow-50 border-l-4 border-yellow-500", badge: "bg-yellow-100 text-yellow-800 border-yellow-300" },
-  "Audible":              { header: "bg-red-100 text-red-800",      row: "bg-red-50 border-l-4 border-red-500",       badge: "bg-red-100 text-red-800 border-red-300" },
-}
-
 export function NewEvaluationForm({ data, onBack, onEvaluate }: NewEvaluationFormProps) {
-  const estilos = RESULTADO_ESTILOS[data.soploCardiaco] ?? RESULTADO_ESTILOS["Normal"]
+  const grado = resolveGradoLevine(data.gradoLevine)
+  const descripcion = resolveDescripcionGrado(grado, data.descripcionGrado)
+  const estilos = GRADO_ESTILOS[grado] ?? GRADO_ESTILOS["AUSENTE"]
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     onEvaluate({
       ...data,
-      esRiesgo: data.soploCardiaco !== "Normal",
+      gradoLevine: grado,
+      descripcionGrado: descripcion,
+      esRiesgo: grado !== "AUSENTE",
     })
   }
 
@@ -87,7 +46,6 @@ export function NewEvaluationForm({ data, onBack, onEvaluate }: NewEvaluationFor
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-5">
 
-          {/* Datos del paciente — solo lectura */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1">
               <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -102,91 +60,35 @@ export function NewEvaluationForm({ data, onBack, onEvaluate }: NewEvaluationFor
                 Edad (años)
               </Label>
               <div className="bg-white border rounded-md px-3 py-2 text-sm font-medium">
-                {data.edad}
+                {data.edad != null ? data.edad : "—"}
               </div>
             </div>
           </div>
 
-          {/* Tipo de evaluación + resultado destacado */}
-          <div className="bg-white border rounded-lg px-4 py-3 space-y-2">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <span className="font-medium text-foreground">Tipo de evaluación:</span>
-                <Badge variant="outline" className="border-[#1793a5] text-[#1793a5]">Soplo Cardíaco</Badge>
-              </div>
-              <div className="flex items-center gap-2 text-sm">
-                <span className="font-medium text-muted-foreground">Resultado Machine Learning:</span>
-                <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold border ${estilos.badge}`}>
-                  {data.soploCardiaco}
+          <div className="bg-white border rounded-lg px-4 py-3 space-y-3">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <span className="font-medium text-foreground">Tipo de evaluación:</span>
+              <Badge variant="outline" className="border-[#1793a5] text-[#1793a5]">Soplo Cardíaco</Badge>
+            </div>
+
+            <div className="border-t pt-3 space-y-2">
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-sm font-medium text-muted-foreground">Resultado:</span>
+                <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-bold border font-mono ${estilos.badge}`}>
+                  {grado}
                 </span>
               </div>
+              <p className="text-sm text-foreground leading-relaxed">
+                {descripcion}
+              </p>
             </div>
+
             {data.puntoAuscultacion && (
               <div className="flex items-center gap-2 text-sm border-t pt-2">
                 <span className="font-medium text-muted-foreground">Punto de Auscultación:</span>
                 <span className="font-semibold text-[#1793a5]">{data.puntoAuscultacion}</span>
               </div>
             )}
-          </div>
-
-          {/* Tabla de clasificación del soplo cardíaco */}
-          <div className="space-y-2">
-            <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Sistema de clasificación del soplo cardíaco
-            </Label>
-            <div className="rounded-lg border border-[#1793a5]/30 overflow-hidden bg-white">
-              <table className="w-full text-sm border-collapse">
-                <thead>
-                  <tr className="bg-[#1793a5] text-white">
-                    <th className="px-4 py-2.5 text-left font-semibold border-r border-[#1793a5]/40 w-1/4">
-                      Categoría
-                    </th>
-                    <th className="px-4 py-2.5 text-center font-semibold border-r border-[#1793a5]/40 w-1/6">
-                      Grado Levine
-                    </th>
-                    <th className="px-4 py-2.5 text-left font-semibold">
-                      Descripción
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {TABLA_CLASIFICACION.map((fila, idx) => {
-                    const esDetectado = fila.mlKey === data.soploCardiaco
-                    const claseBase = esDetectado
-                      ? estilos.row
-                      : idx % 2 === 0 ? "bg-white" : "bg-gray-50"
-
-                    return (
-                      <tr key={idx} className={`${claseBase} border-t border-gray-200`}>
-                        {/* Celda de categoría con rowspan simulado */}
-                        {fila.rowspanCategoria !== 0 && (
-                          <td
-                            rowSpan={fila.rowspanCategoria}
-                            className={`px-4 py-2.5 font-medium border-r border-gray-200 align-middle ${
-                              esDetectado ? "font-bold" : ""
-                            }`}
-                          >
-                            {fila.categoria}
-                            {esDetectado && (
-                              <span className="ml-1 text-xs align-middle">◀</span>
-                            )}
-                          </td>
-                        )}
-                        <td className={`px-4 py-2.5 text-center border-r border-gray-200 font-mono ${esDetectado ? "font-bold" : ""}`}>
-                          {fila.grado}
-                        </td>
-                        <td className={`px-4 py-2.5 ${esDetectado ? "font-medium" : ""}`}>
-                          {fila.descripcion}
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              La fila resaltada indica la clasificación detectada por la IA para este paciente.
-            </p>
           </div>
 
           <div className="flex gap-4 pt-2">
