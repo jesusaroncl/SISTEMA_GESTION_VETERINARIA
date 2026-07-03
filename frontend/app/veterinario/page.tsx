@@ -9,8 +9,9 @@ import { EvaluationsView } from "@/components/evaluations-view"
 import { DataUploadForm } from "@/components/data-upload-form"
 import { NewEvaluationForm } from "@/components/new-evaluation-form"
 import { EvaluationResult } from "@/components/evaluation-result"
+import { VetDashboard } from "@/components/vet-dashboard"
 import { Button } from "@/components/ui/button"
-import { LogOut, Home } from "lucide-react"
+import { LogOut, Home, Users } from "lucide-react"
 import type { Owner, Dog, Evaluation, EvaluationData, UploadedData } from "@/lib/types"
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL
@@ -18,7 +19,7 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL
 export default function VeterinarioPage() {
   const router = useRouter()
   const [username, setUsername] = useState("")
-  const [view, setView] = useState<"owners" | "dogs" | "evaluations" | "upload" | "new-evaluation" | "result">("owners")
+  const [view, setView] = useState<"dashboard" | "owners" | "dogs" | "evaluations" | "upload" | "new-evaluation" | "result">("dashboard")
   const [selectedOwner, setSelectedOwner] = useState<Owner | null>(null)
   const [selectedDog, setSelectedDog] = useState<Dog | null>(null)
   const [uploadedData, setUploadedData] = useState<UploadedData | null>(null)
@@ -55,7 +56,7 @@ export default function VeterinarioPage() {
     setUploadedData(null)
     setEvaluationData(null)
     setEvaluationResult(null)
-    setView("owners")
+    setView("dashboard")
   }
 
   const handleViewDogs = (owner: Owner) => {
@@ -146,7 +147,7 @@ export default function VeterinarioPage() {
     setUploadedData(null)
     setEvaluationData(null)
     setEvaluationResult(null)
-    setView("owners")
+    setView("dashboard")
   }
 
   const handleBackToDogs = () => {
@@ -183,7 +184,7 @@ export default function VeterinarioPage() {
           <div className="flex items-center gap-8">
             <h1 className="text-2xl font-bold text-white">PROYECTO</h1>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
             <Button
               variant="ghost"
               onClick={handleGoHome}
@@ -191,6 +192,14 @@ export default function VeterinarioPage() {
             >
               <Home className="h-4 w-4" />
               Inicio
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={() => setView("owners")}
+              className="gap-2 text-white hover:bg-white/20 hover:text-white"
+            >
+              <Users className="h-4 w-4" />
+              Propietarios
             </Button>
             <Button
               variant="ghost"
@@ -205,9 +214,13 @@ export default function VeterinarioPage() {
       </div>
 
       <div className="container mx-auto py-8 px-4">
+        {view === "dashboard" && (
+          <VetDashboard username={username} />
+        )}
+
         {view === "owners" && (
             <OwnersTable
-                role="veterinario" 
+                role="veterinario"
                 onViewDogs={handleViewDogs}
                 onNewOwner={() => {}} // No usado por el veterinario
                 onEditOwner={() => {}} // No usado por el veterinario

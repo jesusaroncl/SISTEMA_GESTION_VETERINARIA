@@ -349,22 +349,23 @@ def evaluate_dog_audio(dog_id):
             from app.ml_model.predictor import predecir_soplo_cardiaco
 
             # 3. Llamar al modelo de ML (pasamos la RUTA del audio)
-            prediccion = predecir_soplo_cardiaco(audio_path) 
-            
+            prediccion, confianza = predecir_soplo_cardiaco(audio_path)
+
             # 4. Normalizar a grado Levine (sin categorías antiguas)
             clasificacion = _clasificacion_por_grado(prediccion)
             es_riesgo = clasificacion["grado_levine"] != "AUSENTE"
 
             # 5. Calcular datos para el frontend
             edad = calculate_age(dog.fechaNacimiento)
-            
+
             evaluation_data = {
                 "raza": dog.raza,
                 "edad": edad,
                 "gradoLevine": clasificacion["grado_levine"],
                 "descripcionGrado": clasificacion["descripcion_grado"],
                 "esRiesgo": es_riesgo,
-                "datosResultado": f"Grado Levine {clasificacion['grado_levine']}: {clasificacion['descripcion_grado']}"
+                "datosResultado": f"Grado Levine {clasificacion['grado_levine']}: {clasificacion['descripcion_grado']}",
+                "confianzaModelo": round(confianza, 4),
             }
             
             # 6. Limpiar el archivo de audio temporal
@@ -423,6 +424,7 @@ def create_evaluation():
         grado_levine=clasificacion['grado_levine'],
         descripcion_grado=clasificacion['descripcion_grado'],
         punto_auscultacion=eval_data.get('puntoAuscultacion'),
+        confianza_modelo=eval_data.get('confianzaModelo'),
         dog_id=dog_id
     )
 
@@ -437,6 +439,125 @@ def create_evaluation():
     except Exception as e:
         db.session.rollback()
         return jsonify({"msg": "Error al guardar la evaluación", "error": str(e)}), 500
+
+@api.route('/dashboard', methods=['GET'])
+@jwt_required()
+def get_dashboard():
+    """Estadísticas completas para el dashboard del veterinario."""
+    from sqlalchemy import func
+
+    # --- Tarjetas de resumen ---
+    total_owners = db.session.execute(db.select(func.count(Owner.id))).scalar() or 0
+    total_dogs = db.session.execute(db.select(func.count(Dog.id))).scalar() or 0
+    total_evals = db.session.execute(db.select(func.count(Evaluation.id))).scalar() or 0
+    total_con_soplo = db.session.execute(
+        db.select(func.count(Evaluation.id)).where(Evaluation.grado_levine != 'AUSENTE')
+    ).scalar() or 0
+    tasa_hallazgo = round(total_con_soplo / total_evals * 100, 1) if total_evals > 0 else 0.0
+
+    # --- Distribución por grado Levine ---
+    grados_raw = db.session.execute(
+        db.select(Evaluation.grado_levine, func.count(Evaluation.id))
+        .group_by(Evaluation.grado_levine)
+    ).all()
+    distribucion_grados = {(g or "AUSENTE"): c for g, c in grados_raw}
+
+    # --- Tendencia semanal (últimas 10 semanas) ---
+    hace_10_semanas = datetime.date.today() - datetime.timedelta(weeks=10)
+    evals_recientes = db.session.execute(
+        db.select(Evaluation).where(Evaluation.fecha >= hace_10_semanas)
+        .order_by(Evaluation.fecha)
+    ).scalars().all()
+
+    semanas: dict = {}
+    for e in evals_recientes:
+        if not e.fecha:
+            continue
+        iso = e.fecha.isocalendar()
+        key = f"S{iso[1]:02d}"
+        if key not in semanas:
+            semanas[key] = {"semana": key, "total": 0, "conSoplo": 0}
+        semanas[key]["total"] += 1
+        if e.grado_levine and e.grado_levine != "AUSENTE":
+            semanas[key]["conSoplo"] += 1
+    tendencia_semanal = list(semanas.values())
+
+    # --- Soplos por raza y rango de edad ---
+    evals_con_soplo = db.session.execute(
+        db.select(Evaluation).where(Evaluation.grado_levine != 'AUSENTE')
+    ).scalars().all()
+
+    raza_map: dict = {}
+    RANGOS = ["0-2 años", "3-5 años", "6-8 años", "9+ años"]
+    for e in evals_con_soplo:
+        dog = db.session.get(Dog, e.dog_id)
+        if not dog:
+            continue
+        raza = dog.raza or "Desconocida"
+        edad = calculate_age(dog.fechaNacimiento, e.fecha) or 0
+        if edad <= 2:
+            rango = "0-2 años"
+        elif edad <= 5:
+            rango = "3-5 años"
+        elif edad <= 8:
+            rango = "6-8 años"
+        else:
+            rango = "9+ años"
+        if raza not in raza_map:
+            raza_map[raza] = {"raza": raza, "0-2 años": 0, "3-5 años": 0, "6-8 años": 0, "9+ años": 0}
+        raza_map[raza][rango] += 1
+
+    soplos_por_raza = sorted(
+        raza_map.values(),
+        key=lambda x: sum(x[r] for r in RANGOS),
+        reverse=True
+    )[:7]
+
+    # --- Confianza promedio por grado ---
+    confianza_raw = db.session.execute(
+        db.select(Evaluation.grado_levine, func.avg(Evaluation.confianza_modelo))
+        .where(Evaluation.confianza_modelo.isnot(None))
+        .group_by(Evaluation.grado_levine)
+    ).all()
+    confianza_por_grado = [
+        {"grado": (g or "AUSENTE"), "confianza": round((c or 0) * 100, 1)}
+        for g, c in confianza_raw
+    ]
+    confianza_general_raw = db.session.execute(
+        db.select(func.avg(Evaluation.confianza_modelo))
+        .where(Evaluation.confianza_modelo.isnot(None))
+    ).scalar()
+    confianza_general = round((confianza_general_raw or 0) * 100, 1)
+
+    # --- Evaluaciones recientes ---
+    recent_evals = db.session.execute(
+        db.select(Evaluation).order_by(Evaluation.fecha.desc()).limit(5)
+    ).scalars().all()
+    recent_list = []
+    for e in recent_evals:
+        dog = db.session.get(Dog, e.dog_id)
+        owner = db.session.get(Owner, dog.owner_id) if dog else None
+        recent_list.append({
+            "id": e.id,
+            "fecha": e.fecha.isoformat() if e.fecha else None,
+            "gradoLevine": e.grado_levine or "AUSENTE",
+            "perro": dog.nombre if dog else "—",
+            "propietario": f"{owner.nombres} {owner.apellidos}" if owner else "—",
+        })
+
+    return jsonify({
+        "totalPropietarios": total_owners,
+        "totalPerros": total_dogs,
+        "totalEvaluaciones": total_evals,
+        "tasaHallazgo": tasa_hallazgo,
+        "distribucionGrados": distribucion_grados,
+        "tendenciaSemanal": tendencia_semanal,
+        "soplosPorRaza": soplos_por_raza,
+        "confianzaPorGrado": confianza_por_grado,
+        "confianzaGeneral": confianza_general,
+        "evaluacionesRecientes": recent_list,
+    }), 200
+
 
 @api.route('/dogs/<string:dog_id>/evaluations', methods=['GET'])
 @jwt_required() # Permitir que ambos roles vean el historial

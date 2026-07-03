@@ -104,6 +104,9 @@ class Evaluation(db.Model):
     # Punto de auscultación detectado desde el nombre del archivo
     punto_auscultacion = db.Column(db.String(100), nullable=True)
 
+    # Confianza del modelo CNN (0.0 - 1.0)
+    confianza_modelo = db.Column(db.Float, nullable=True)
+
     # Foreign Key a la tabla Dog
     dog_id = db.Column(db.String(36), db.ForeignKey('dogs.id'), nullable=False)
 
@@ -119,4 +122,5 @@ class Evaluation(db.Model):
             "gradoLevine": self.grado_levine,
             "descripcionGrado": self.descripcion_grado,
             "puntoAuscultacion": self.punto_auscultacion,
+            "confianzaModelo": self.confianza_modelo,
         }

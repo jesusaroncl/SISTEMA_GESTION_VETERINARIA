@@ -52,4 +52,5 @@ export type EvaluationData = {
   esRiesgo: boolean
   datosResultado: string
   puntoAuscultacion?: string
+  confianzaModelo?: number
 }

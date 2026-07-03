@@ -88,8 +88,8 @@ class AudioSpectrogramPredictor:
         idx = int(np.argmax(prediction[0]))
         prob = float(np.max(prediction[0]))
         
-        # 4. Devolver la fase predicha
-        return self.labels[idx]
+        # 4. Devolver la fase predicha y la confianza
+        return self.labels[idx], prob
 
 # --- Instanciar el modelo UNA SOLA VEZ (globalmente) ---
 try:
@@ -106,12 +106,14 @@ def predecir_soplo_cardiaco(audio_path):
     if predictor_instancia is None:
         raise RuntimeError("El modelo de predicción no está cargado.")
         
-    fase_predicha = predictor_instancia.predict(audio_path)
-    
+    fase_predicha, confianza = predictor_instancia.predict(audio_path)
+
     # Mapear fase ACVIM → Grado Levine (sin categoría clínica intermedia)
     if fase_predicha == "A":
-        return "AUSENTE"
+        grado = "AUSENTE"
     elif fase_predicha == "B":
-        return "I /VI"
+        grado = "I /VI"
     else:  # Fases C o D
-        return "III /VI"
+        grado = "III /VI"
+
+    return grado, confianza
