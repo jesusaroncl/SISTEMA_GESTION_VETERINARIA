@@ -488,30 +488,28 @@ def get_dashboard():
     ).scalars().all()
 
     raza_map: dict = {}
-    RANGOS = ["0-2 años", "3-5 años", "6-8 años", "9+ años"]
+    RANGOS = ["<7y", "7-10y", ">10y"]
     for e in evals_con_soplo:
         dog = db.session.get(Dog, e.dog_id)
         if not dog:
             continue
         raza = dog.raza or "Desconocida"
         edad = calculate_age(dog.fechaNacimiento, e.fecha) or 0
-        if edad <= 2:
-            rango = "0-2 años"
-        elif edad <= 5:
-            rango = "3-5 años"
-        elif edad <= 8:
-            rango = "6-8 años"
+        if edad < 7:
+            rango = "<7y"
+        elif edad <= 10:
+            rango = "7-10y"
         else:
-            rango = "9+ años"
+            rango = ">10y"
         if raza not in raza_map:
-            raza_map[raza] = {"raza": raza, "0-2 años": 0, "3-5 años": 0, "6-8 años": 0, "9+ años": 0}
+            raza_map[raza] = {"raza": raza, "<7y": 0, "7-10y": 0, ">10y": 0}
         raza_map[raza][rango] += 1
 
     soplos_por_raza = sorted(
         raza_map.values(),
         key=lambda x: sum(x[r] for r in RANGOS),
         reverse=True
-    )[:7]
+    )[:8]
 
     # --- Confianza promedio por grado ---
     confianza_raw = db.session.execute(
@@ -538,11 +536,14 @@ def get_dashboard():
         dog = db.session.get(Dog, e.dog_id)
         owner = db.session.get(Owner, dog.owner_id) if dog else None
         recent_list.append({
-            "id": e.id,
+            "idCorto": e.id[:8].upper(),
             "fecha": e.fecha.isoformat() if e.fecha else None,
             "gradoLevine": e.grado_levine or "AUSENTE",
             "perro": dog.nombre if dog else "—",
+            "raza": dog.raza if dog else "—",
+            "especie": dog.especie if dog else "Canino",
             "propietario": f"{owner.nombres} {owner.apellidos}" if owner else "—",
+            "resultado": "Sin Soplo" if (e.grado_levine or "AUSENTE") == "AUSENTE" else "Soplo Cardíaco",
         })
 
     return jsonify({

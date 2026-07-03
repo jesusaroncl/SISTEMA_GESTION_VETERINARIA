@@ -11,7 +11,7 @@ import { NewEvaluationForm } from "@/components/new-evaluation-form"
 import { EvaluationResult } from "@/components/evaluation-result"
 import { VetDashboard } from "@/components/vet-dashboard"
 import { Button } from "@/components/ui/button"
-import { LogOut, Home, Users } from "lucide-react"
+import { LogOut, Home, LayoutDashboard, Users } from "lucide-react"
 import type { Owner, Dog, Evaluation, EvaluationData, UploadedData } from "@/lib/types"
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL
@@ -184,10 +184,10 @@ export default function VeterinarioPage() {
           <div className="flex items-center gap-8">
             <h1 className="text-2xl font-bold text-white">PROYECTO</h1>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
             <Button
               variant="ghost"
-              onClick={handleGoHome}
+              onClick={() => setView("owners")}
               className="gap-2 text-white hover:bg-white/20 hover:text-white"
             >
               <Home className="h-4 w-4" />
@@ -195,11 +195,11 @@ export default function VeterinarioPage() {
             </Button>
             <Button
               variant="ghost"
-              onClick={() => setView("owners")}
-              className="gap-2 text-white hover:bg-white/20 hover:text-white"
+              onClick={handleGoHome}
+              className={`gap-2 text-white hover:bg-white/20 hover:text-white ${view === "dashboard" ? "bg-white/20" : ""}`}
             >
-              <Users className="h-4 w-4" />
-              Propietarios
+              <LayoutDashboard className="h-4 w-4" />
+              Dashboard
             </Button>
             <Button
               variant="ghost"
