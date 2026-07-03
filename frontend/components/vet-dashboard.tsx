@@ -1,36 +1,35 @@
 "use client"
 
 import { useEffect, useState, useCallback } from "react"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer, Cell, LabelList,
   ComposedChart, Area, Line, ReferenceLine,
   PieChart, Pie, Sector,
 } from "recharts"
-import { Users, Dog, ClipboardList, Activity, TrendingUp, Brain, AlertCircle } from "lucide-react"
+import { Users, Dog, ClipboardList, Activity, TrendingUp, Brain, AlertCircle, RefreshCw } from "lucide-react"
 import { formatDateDDMMYYYY } from "@/lib/date-utils"
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:5000"
 
-/* ── Paleta ─────────────────────────────────────────────── */
+/* ─── Paleta ──────────────────────────────────────────────── */
 const GRADO_COLORS: Record<string, string> = {
-  "AUSENTE": "#22c55e",
-  "I /VI":   "#eab308",
+  "AUSENTE": "#10b981",
+  "I /VI":   "#f59e0b",
   "II /VI":  "#f97316",
   "III /VI": "#ef4444",
 }
-const GRADO_BADGE: Record<string, string> = {
-  "AUSENTE": "bg-green-100 text-green-800 border border-green-200",
-  "I /VI":   "bg-yellow-100 text-yellow-800 border border-yellow-200",
-  "II /VI":  "bg-orange-100 text-orange-800 border border-orange-200",
-  "III /VI": "bg-red-100 text-red-800 border border-red-200",
+const GRADO_BADGE_CLS: Record<string, string> = {
+  "AUSENTE": "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200",
+  "I /VI":   "bg-amber-50  text-amber-700  ring-1 ring-amber-200",
+  "II /VI":  "bg-orange-50 text-orange-700 ring-1 ring-orange-200",
+  "III /VI": "bg-red-50    text-red-700    ring-1 ring-red-200",
 }
 const EDAD_COLORS  = ["#38bdf8", "#818cf8", "#fb923c", "#f87171"]
 const RANGOS_EDAD  = ["0-2 años", "3-5 años", "6-8 años", "9+ años"]
 const ORDEN_GRADOS = ["AUSENTE", "I /VI", "II /VI", "III /VI"]
 
-/* ── Tipos ───────────────────────────────────────────────── */
+/* ─── Tipo de datos ───────────────────────────────────────── */
 type DashboardData = {
   totalPropietarios: number
   totalPerros: number
@@ -46,235 +45,257 @@ type DashboardData = {
   }[]
 }
 
-/* ── Tooltip personalizado – Tendencia ───────────────────── */
+/* ─── Tooltips ────────────────────────────────────────────── */
 const TooltipTendencia = ({ active, payload, label }: any) => {
   if (!active || !payload?.length) return null
+  const tasa = payload[0].value > 0
+    ? Math.round((payload[1]?.value / payload[0].value) * 100)
+    : 0
   return (
-    <div className="bg-white border border-gray-200 rounded-xl shadow-lg px-4 py-3 text-xs">
-      <p className="font-semibold text-gray-700 mb-2">Semana {label}</p>
+    <div className="bg-white/95 backdrop-blur-sm border border-slate-100 rounded-2xl shadow-xl px-4 py-3 text-xs min-w-[160px]">
+      <p className="font-semibold text-slate-500 mb-2.5 uppercase tracking-wider">Semana {label}</p>
       {payload.map((p: any) => (
-        <div key={p.dataKey} className="flex items-center gap-2 mb-1">
-          <span className="w-2 h-2 rounded-full" style={{ background: p.color }} />
-          <span className="text-gray-600">{p.name}:</span>
-          <span className="font-bold text-gray-800">{p.value}</span>
-        </div>
-      ))}
-      {payload.length === 2 && payload[0].value > 0 && (
-        <div className="mt-2 pt-2 border-t border-gray-100 text-gray-500">
-          Tasa: <span className="font-semibold text-orange-500">
-            {Math.round((payload[1].value / payload[0].value) * 100)}%
-          </span>
-        </div>
-      )}
-    </div>
-  )
-}
-
-/* ── Tooltip personalizado – Confianza ───────────────────── */
-const TooltipConfianza = ({ active, payload }: any) => {
-  if (!active || !payload?.length) return null
-  const { grado, confianza } = payload[0].payload
-  return (
-    <div className="bg-white border border-gray-200 rounded-xl shadow-lg px-4 py-3 text-xs">
-      <p className="font-semibold mb-1" style={{ color: GRADO_COLORS[grado] ?? "#6b7280" }}>
-        Grado {grado}
-      </p>
-      <p className="text-gray-700">Confianza promedio: <strong>{confianza}%</strong></p>
-      <p className="text-gray-400 mt-1">{confianza >= 80 ? "Alta precisión" : confianza >= 70 ? "Buena precisión" : "Precisión moderada"}</p>
-    </div>
-  )
-}
-
-/* ── Tooltip personalizado – Raza ────────────────────────── */
-const TooltipRaza = ({ active, payload, label }: any) => {
-  if (!active || !payload?.length) return null
-  const total = payload.reduce((s: number, p: any) => s + (p.value || 0), 0)
-  return (
-    <div className="bg-white border border-gray-200 rounded-xl shadow-lg px-4 py-3 text-xs min-w-[160px]">
-      <p className="font-semibold text-gray-800 mb-2">{label}</p>
-      {payload.map((p: any) => p.value > 0 && (
-        <div key={p.dataKey} className="flex items-center justify-between gap-4 mb-1">
-          <div className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full" style={{ background: p.fill }} />
-            <span className="text-gray-600">{p.dataKey}</span>
+        <div key={p.dataKey} className="flex items-center justify-between gap-6 mb-1.5">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full" style={{ background: p.color }} />
+            <span className="text-slate-600">{p.name}</span>
           </div>
-          <span className="font-bold">{p.value}</span>
+          <span className="font-bold text-slate-800">{p.value}</span>
         </div>
       ))}
-      <div className="mt-2 pt-2 border-t border-gray-100 flex justify-between">
-        <span className="text-gray-500">Total soplos</span>
-        <span className="font-bold text-gray-800">{total}</span>
+      <div className="mt-2.5 pt-2.5 border-t border-slate-100 flex justify-between items-center">
+        <span className="text-slate-400">Tasa hallazgo</span>
+        <span className="font-bold text-orange-500">{tasa}%</span>
       </div>
     </div>
   )
 }
 
-/* ── Active Shape para PieChart ──────────────────────────── */
+const TooltipConfianza = ({ active, payload }: any) => {
+  if (!active || !payload?.length) return null
+  const { grado, confianza } = payload[0].payload
+  const nivel = confianza >= 85 ? "Excelente" : confianza >= 75 ? "Buena" : "Moderada"
+  return (
+    <div className="bg-white/95 backdrop-blur-sm border border-slate-100 rounded-2xl shadow-xl px-4 py-3 text-xs">
+      <p className="font-semibold mb-1" style={{ color: GRADO_COLORS[grado] }}>Grado {grado}</p>
+      <p className="text-slate-700">Confianza: <strong>{confianza}%</strong></p>
+      <p className="text-slate-400 mt-1">Precisión: {nivel}</p>
+    </div>
+  )
+}
+
+const TooltipRaza = ({ active, payload, label }: any) => {
+  if (!active || !payload?.length) return null
+  const total = payload.reduce((s: number, p: any) => s + (p.value || 0), 0)
+  return (
+    <div className="bg-white/95 backdrop-blur-sm border border-slate-100 rounded-2xl shadow-xl px-4 py-3 text-xs min-w-[180px]">
+      <p className="font-semibold text-slate-700 mb-2.5">{label}</p>
+      {payload.map((p: any) => p.value > 0 && (
+        <div key={p.dataKey} className="flex items-center justify-between gap-4 mb-1.5">
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-sm" style={{ background: p.fill }} />
+            <span className="text-slate-500">{p.dataKey}</span>
+          </div>
+          <span className="font-bold text-slate-800">{p.value}</span>
+        </div>
+      ))}
+      <div className="mt-2.5 pt-2.5 border-t border-slate-100 flex justify-between">
+        <span className="text-slate-400">Total</span>
+        <span className="font-bold text-slate-800">{total}</span>
+      </div>
+    </div>
+  )
+}
+
+/* ─── Active Shape Pie ────────────────────────────────────── */
 const renderActiveShape = (props: any) => {
-  const {
-    cx, cy, innerRadius, outerRadius, startAngle, endAngle,
-    fill, payload, percent, value,
-  } = props
+  const { cx, cy, innerRadius, outerRadius, startAngle, endAngle, fill, payload, percent, value } = props
   return (
     <g>
-      <text x={cx} y={cy - 10} textAnchor="middle" fill="#111827" className="text-base font-bold" style={{ fontSize: 22, fontWeight: 700 }}>
-        {value}
-      </text>
-      <text x={cx} y={cy + 18} textAnchor="middle" fill="#6b7280" style={{ fontSize: 11 }}>
-        {payload.grado}
-      </text>
+      <text x={cx} y={cy - 12} textAnchor="middle" fill="#0f172a" style={{ fontSize: 26, fontWeight: 800 }}>{value}</text>
+      <text x={cx} y={cy + 14} textAnchor="middle" fill="#94a3b8" style={{ fontSize: 11 }}>{payload.grado}</text>
       <Sector cx={cx} cy={cy} innerRadius={innerRadius} outerRadius={outerRadius + 8}
         startAngle={startAngle} endAngle={endAngle} fill={fill} />
-      <Sector cx={cx} cy={cy} innerRadius={outerRadius + 12} outerRadius={outerRadius + 16}
-        startAngle={startAngle} endAngle={endAngle} fill={fill} />
-      <text x={cx} y={cy + 44} textAnchor="middle" fill={fill} style={{ fontSize: 13, fontWeight: 600 }}>
+      <Sector cx={cx} cy={cy} innerRadius={outerRadius + 13} outerRadius={outerRadius + 17}
+        startAngle={startAngle} endAngle={endAngle} fill={fill} opacity={0.4} />
+      <text x={cx} y={cy + 42} textAnchor="middle" fill={fill} style={{ fontSize: 14, fontWeight: 700 }}>
         {(percent * 100).toFixed(1)}%
       </text>
     </g>
   )
 }
 
-/* ── Leyenda personalizada – Pie ─────────────────────────── */
-const LeyendaPie = ({ data, total }: { data: { grado: string; cantidad: number }[]; total: number }) => (
-  <div className="flex flex-col gap-2 justify-center h-full pl-2">
-    {data.filter(d => d.cantidad > 0).map((d) => (
-      <div key={d.grado} className="flex items-center gap-2">
-        <span className="w-3 h-3 rounded-sm flex-shrink-0" style={{ background: GRADO_COLORS[d.grado] }} />
-        <span className="text-xs text-gray-700 font-medium flex-1">{d.grado}</span>
-        <span className="text-xs font-bold text-gray-800">{d.cantidad}</span>
-        <span className="text-xs text-gray-400">({total > 0 ? Math.round(d.cantidad / total * 100) : 0}%)</span>
-      </div>
-    ))}
-  </div>
-)
-
-/* ── Label personalizado para barra de confianza ─────────── */
+/* ─── Label de confianza ──────────────────────────────────── */
 const LabelConfianza = (props: any) => {
   const { x, y, width, value } = props
   if (!value) return null
   return (
-    <text x={x + width / 2} y={y - 6} textAnchor="middle" fill="#374151" fontSize={11} fontWeight={600}>
+    <text x={x + width / 2} y={y - 8} textAnchor="middle" fill="#475569" fontSize={11} fontWeight={700}>
       {value}%
     </text>
   )
 }
 
-/* ══════════════════════════════════════════════════════════ */
-export function VetDashboard({ username }: { username: string }) {
-  const [data, setData]         = useState<DashboardData | null>(null)
-  const [loading, setLoading]   = useState(true)
-  const [error, setError]       = useState(false)
-  const [activeGrado, setActiveGrado] = useState(0)
+/* ─── Card base ───────────────────────────────────────────── */
+function ChartCard({ title, description, children, action }: {
+  title: string; description?: string; children: React.ReactNode; action?: React.ReactNode
+}) {
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+      <div className="px-6 pt-5 pb-3 flex items-start justify-between gap-4">
+        <div>
+          <h3 className="text-sm font-bold text-slate-800 tracking-tight">{title}</h3>
+          {description && <p className="text-xs text-slate-400 mt-0.5">{description}</p>}
+        </div>
+        {action}
+      </div>
+      <div className="px-6 pb-5">{children}</div>
+    </div>
+  )
+}
 
-  useEffect(() => {
+/* ══════════════════════════════════════════════════════════════ */
+export function VetDashboard({ username }: { username: string }) {
+  const [data, setData]       = useState<DashboardData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError]     = useState(false)
+  const [activeGrado, setActiveGrado] = useState(0)
+  const onPieEnter = useCallback((_: any, i: number) => setActiveGrado(i), [])
+
+  const fetchData = useCallback(() => {
+    setLoading(true); setError(false)
     const token = localStorage.getItem("access_token")
-    fetch(`${API_BASE_URL}/api/dashboard`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((r) => { if (!r.ok) throw new Error(); return r.json() })
-      .then(setData)
-      .catch(() => setError(true))
-      .finally(() => setLoading(false))
+    fetch(`${API_BASE_URL}/api/dashboard`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => { if (!r.ok) throw new Error(); return r.json() })
+      .then(setData).catch(() => setError(true)).finally(() => setLoading(false))
   }, [])
 
-  const onPieEnter = useCallback((_: any, index: number) => setActiveGrado(index), [])
+  useEffect(() => { fetchData() }, [fetchData])
 
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center py-24 gap-3">
-        <div className="w-8 h-8 border-4 border-[#1793a5] border-t-transparent rounded-full animate-spin" />
-        <p className="text-muted-foreground text-sm">Cargando estadísticas...</p>
-      </div>
-    )
-  }
+  /* ── Estado de carga ── */
+  if (loading) return (
+    <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
+      <div className="w-10 h-10 border-4 border-[#1793a5]/30 border-t-[#1793a5] rounded-full animate-spin" />
+      <p className="text-slate-500 text-sm font-medium">Cargando estadísticas…</p>
+    </div>
+  )
 
-  if (error || !data) {
-    return (
-      <div className="flex flex-col items-center justify-center py-24 gap-3 text-muted-foreground">
-        <AlertCircle className="w-10 h-10 text-red-400" />
-        <p className="text-sm">No se pudieron cargar los datos del dashboard.</p>
+  if (error || !data) return (
+    <div className="flex flex-col items-center justify-center min-h-[60vh] gap-3">
+      <div className="w-14 h-14 bg-red-50 rounded-2xl flex items-center justify-center">
+        <AlertCircle className="w-7 h-7 text-red-400" />
       </div>
-    )
-  }
+      <p className="text-slate-600 text-sm font-medium">No se pudieron cargar los datos</p>
+      <button onClick={fetchData}
+        className="text-xs text-[#1793a5] hover:underline flex items-center gap-1 mt-1">
+        <RefreshCw className="w-3 h-3" /> Reintentar
+      </button>
+    </div>
+  )
 
   /* ── Preparar datos ── */
-  const distribucionData = ORDEN_GRADOS.map((g) => ({
-    grado: g,
-    cantidad: data.distribucionGrados[g] ?? 0,
-  })).filter(d => d.cantidad > 0)
-
+  const distribucionData = ORDEN_GRADOS
+    .map(g => ({ grado: g, cantidad: data.distribucionGrados[g] ?? 0 }))
+    .filter(d => d.cantidad > 0)
   const totalEvals = distribucionData.reduce((s, d) => s + d.cantidad, 0)
 
   const confianzaData = ORDEN_GRADOS
-    .map((g) => data.confianzaPorGrado.find((c) => c.grado === g))
+    .map(g => data.confianzaPorGrado.find(c => c.grado === g))
     .filter(Boolean) as { grado: string; confianza: number }[]
 
-  const totalSoplosRaza = data.soplosPorRaza.map((r) => ({
+  const razaData = data.soplosPorRaza.map(r => ({
     ...r,
     _total: RANGOS_EDAD.reduce((s, rng) => s + ((r[rng] as number) || 0), 0),
   }))
 
-  return (
-    <div className="space-y-6">
-
-      {/* ── Encabezado ── */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-800">Bienvenido, {username}</h2>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Panel estadístico · Sistema de Gestión Veterinaria
-          </p>
+  /* ── KPI config ── */
+  const kpis = [
+    { label: "Propietarios",     value: data.totalPropietarios,  icon: Users,        accent: "from-[#1793a5] to-cyan-400",   iconBg: "bg-cyan-50",   iconColor: "text-[#1793a5]" },
+    { label: "Pacientes Caninos",value: data.totalPerros,         icon: Dog,          accent: "from-violet-500 to-purple-400", iconBg: "bg-violet-50", iconColor: "text-violet-600" },
+    { label: "Evaluaciones",     value: data.totalEvaluaciones,   icon: ClipboardList,accent: "from-blue-500 to-sky-400",      iconBg: "bg-blue-50",   iconColor: "text-blue-600" },
+    { label: "Tasa de Hallazgo", value: `${data.tasaHallazgo}%`,  icon: Activity,     accent: "from-orange-500 to-amber-400",  iconBg: "bg-orange-50", iconColor: "text-orange-500",
+      extra: (
+        <div className="mt-3">
+          <div className="flex justify-between text-[10px] text-slate-400 mb-1">
+            <span>0%</span><span>100%</span>
+          </div>
+          <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+            <div className="h-full rounded-full bg-gradient-to-r from-orange-400 to-amber-300 transition-all duration-1000"
+              style={{ width: `${Math.min(data.tasaHallazgo, 100)}%` }} />
+          </div>
         </div>
-        <span className="hidden sm:inline-block text-xs text-muted-foreground bg-muted px-3 py-1 rounded-full">
-          Datos en tiempo real
-        </span>
+      )
+    },
+  ] as const
+
+  return (
+    <div className="space-y-7">
+
+      {/* ── Encabezado ─────────────────────────────────── */}
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#1793a5] via-[#1180a0] to-[#0d6b87] px-7 py-6 text-white shadow-lg">
+        {/* Círculos decorativos */}
+        <div className="absolute -right-10 -top-10 w-48 h-48 bg-white/5 rounded-full" />
+        <div className="absolute -right-4 top-12 w-28 h-28 bg-white/5 rounded-full" />
+        <div className="relative">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-cyan-200 text-xs font-medium uppercase tracking-widest mb-1">Panel Estadístico</p>
+              <h2 className="text-2xl font-extrabold tracking-tight">Bienvenido, {username}</h2>
+              <p className="text-cyan-100/80 text-sm mt-1">Sistema de Gestión Veterinaria · Módulo Veterinario</p>
+            </div>
+            <span className="hidden sm:flex items-center gap-1.5 bg-white/15 backdrop-blur-sm text-white/90 text-xs font-medium px-3 py-1.5 rounded-full border border-white/20 flex-shrink-0">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse" />
+              En vivo
+            </span>
+          </div>
+          {/* Mini KPIs dentro del header */}
+          <div className="mt-5 grid grid-cols-3 gap-3">
+            {[
+              { label: "Propietarios",  value: data.totalPropietarios },
+              { label: "Pacientes",     value: data.totalPerros },
+              { label: "Evaluaciones",  value: data.totalEvaluaciones },
+            ].map(k => (
+              <div key={k.label} className="bg-white/10 backdrop-blur-sm rounded-xl px-4 py-2.5 border border-white/10">
+                <p className="text-3xl font-extrabold">{k.value}</p>
+                <p className="text-cyan-200/80 text-xs mt-0.5">{k.label}</p>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
 
-      {/* ── Tarjetas KPI ── */}
+      {/* ── Tarjetas KPI ───────────────────────────────── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {[
-          { label: "Propietarios", value: data.totalPropietarios, icon: Users,        color: "text-[#1793a5]", bg: "bg-[#1793a5]/10" },
-          { label: "Pacientes Caninos", value: data.totalPerros,  icon: Dog,          color: "text-violet-600", bg: "bg-violet-100" },
-          { label: "Evaluaciones",    value: data.totalEvaluaciones, icon: ClipboardList, color: "text-blue-600", bg: "bg-blue-100" },
-          { label: "Tasa de Hallazgo", value: `${data.tasaHallazgo}%`, icon: Activity, color: "text-orange-500", bg: "bg-orange-100", sub: "soplos detectados" },
-        ].map(({ label, value, icon: Icon, color, bg, sub }) => (
-          <Card key={label} className="border-0 shadow-sm hover:shadow-md transition-shadow">
-            <CardContent className="pt-5 pb-4">
-              <div className="flex items-start justify-between">
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider truncate">{label}</p>
-                  <p className={`text-3xl font-extrabold mt-1 ${color}`}>{value}</p>
-                  {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
-                </div>
-                <div className={`${bg} p-2.5 rounded-xl flex-shrink-0`}>
-                  <Icon className={`h-5 w-5 ${color}`} />
+        {kpis.map(({ label, value, icon: Icon, accent, iconBg, iconColor, extra }) => (
+          <div key={label} className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden hover:shadow-md transition-all duration-200 hover:-translate-y-0.5">
+            {/* Barra superior con gradiente */}
+            <div className={`h-1 bg-gradient-to-r ${accent}`} />
+            <div className="p-5">
+              <div className="flex items-start justify-between mb-3">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider leading-tight">{label}</p>
+                <div className={`${iconBg} p-2 rounded-xl`}>
+                  <Icon className={`h-4 w-4 ${iconColor}`} />
                 </div>
               </div>
-              {/* Barra de progreso para tasa */}
-              {label === "Tasa de Hallazgo" && (
-                <div className="mt-3 h-1.5 bg-orange-100 rounded-full overflow-hidden">
-                  <div className="h-full bg-orange-400 rounded-full transition-all duration-700"
-                    style={{ width: `${Math.min(data.tasaHallazgo, 100)}%` }} />
-                </div>
-              )}
-            </CardContent>
-          </Card>
+              <p className={`text-4xl font-extrabold tracking-tight ${iconColor}`}>{value}</p>
+              {extra}
+            </div>
+          </div>
         ))}
       </div>
 
-      {/* ── Fila 2: Distribución (Donut) + Tendencia semanal ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      {/* ── Fila 2: Donut + Tendencia ──────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
 
-        {/* Distribución Grado Levine — Donut interactivo */}
-        <Card className="border-0 shadow-sm">
-          <CardHeader className="pb-1">
-            <CardTitle className="text-sm font-semibold text-gray-800">Distribución por Grado Levine</CardTitle>
-            <CardDescription className="text-xs">Hover para ver detalle de cada grado</CardDescription>
-          </CardHeader>
-          <CardContent>
+        {/* Donut — 2/5 */}
+        <div className="lg:col-span-2">
+          <ChartCard
+            title="Distribución por Grado Levine"
+            description="Hover sobre cada sector para ver el detalle"
+          >
             {distribucionData.length > 0 ? (
-              <div className="flex items-center gap-4">
-                <ResponsiveContainer width={200} height={200}>
+              <div className="flex flex-col gap-4">
+                <ResponsiveContainer width="100%" height={200}>
                   <PieChart>
                     <Pie
                       activeIndex={activeGrado}
@@ -282,244 +303,223 @@ export function VetDashboard({ username }: { username: string }) {
                       data={distribucionData}
                       dataKey="cantidad"
                       nameKey="grado"
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={58}
-                      outerRadius={80}
+                      cx="50%" cy="50%"
+                      innerRadius={60} outerRadius={82}
                       onMouseEnter={onPieEnter}
                     >
-                      {distribucionData.map((entry, i) => (
-                        <Cell key={i} fill={GRADO_COLORS[entry.grado]} stroke="white" strokeWidth={2} />
+                      {distribucionData.map((d, i) => (
+                        <Cell key={i} fill={GRADO_COLORS[d.grado]} stroke="white" strokeWidth={3} />
                       ))}
                     </Pie>
                   </PieChart>
                 </ResponsiveContainer>
-                <div className="flex-1">
-                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Leyenda</p>
-                  <LeyendaPie data={distribucionData} total={totalEvals} />
-                  <div className="mt-3 pt-3 border-t border-gray-100">
-                    <p className="text-xs text-gray-500">Total evaluaciones</p>
-                    <p className="text-xl font-bold text-gray-800">{totalEvals}</p>
-                  </div>
+                {/* Leyenda */}
+                <div className="space-y-2">
+                  {distribucionData.map((d) => {
+                    const pct = totalEvals > 0 ? Math.round(d.cantidad / totalEvals * 100) : 0
+                    return (
+                      <div key={d.grado} className="flex items-center gap-2.5">
+                        <span className="w-3 h-3 rounded-sm flex-shrink-0" style={{ background: GRADO_COLORS[d.grado] }} />
+                        <span className="text-xs text-slate-600 font-medium flex-1">{d.grado}</span>
+                        <div className="flex items-center gap-2">
+                          <div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                            <div className="h-full rounded-full" style={{ width: `${pct}%`, background: GRADO_COLORS[d.grado] }} />
+                          </div>
+                          <span className="text-xs font-bold text-slate-700 w-6 text-right">{d.cantidad}</span>
+                          <span className="text-xs text-slate-400 w-8">({pct}%)</span>
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground py-8 text-center">Sin datos aún</p>
+              <p className="text-sm text-slate-400 py-10 text-center">Sin datos aún</p>
             )}
-          </CardContent>
-        </Card>
+          </ChartCard>
+        </div>
 
-        {/* Tendencia semanal — Area + Line */}
-        <Card className="border-0 shadow-sm">
-          <CardHeader className="pb-1">
-            <CardTitle className="text-sm font-semibold text-gray-800">Tendencia Semanal de Hallazgos</CardTitle>
-            <CardDescription className="text-xs">Total de casos vs casos con soplo — últimas 10 semanas</CardDescription>
-          </CardHeader>
-          <CardContent>
+        {/* Tendencia semanal — 3/5 */}
+        <div className="lg:col-span-3">
+          <ChartCard
+            title="Tendencia Semanal de Hallazgos"
+            description="Total de casos vs casos con soplo detectado — últimas 10 semanas"
+          >
             {data.tendenciaSemanal.length > 0 ? (
-              <ResponsiveContainer width="100%" height={220}>
-                <ComposedChart data={data.tendenciaSemanal} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
+              <ResponsiveContainer width="100%" height={270}>
+                <ComposedChart data={data.tendenciaSemanal} margin={{ top: 15, right: 10, left: -20, bottom: 0 }}>
                   <defs>
-                    <linearGradient id="gradTotal" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%"  stopColor="#1793a5" stopOpacity={0.25} />
-                      <stop offset="95%" stopColor="#1793a5" stopOpacity={0} />
-                    </linearGradient>
-                    <linearGradient id="gradSoplo" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%"  stopColor="#ef4444" stopOpacity={0.15} />
-                      <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
+                    <linearGradient id="gTotal" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%"   stopColor="#1793a5" stopOpacity={0.3} />
+                      <stop offset="100%" stopColor="#1793a5" stopOpacity={0.02} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="4 4" stroke="#f0f0f0" vertical={false} />
-                  <XAxis dataKey="semana" tick={{ fontSize: 11, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
-                  <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
-                  <Tooltip content={<TooltipTendencia />} />
+                  <CartesianGrid strokeDasharray="4 4" stroke="#f1f5f9" vertical={false} />
+                  <XAxis dataKey="semana" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+                  <Tooltip content={<TooltipTendencia />} cursor={{ stroke: "#e2e8f0", strokeWidth: 1.5 }} />
                   <Legend
-                    wrapperStyle={{ fontSize: 11, paddingTop: 8 }}
-                    formatter={(value) => <span style={{ color: "#374151" }}>{value}</span>}
+                    iconType="circle" iconSize={8}
+                    wrapperStyle={{ fontSize: 11, paddingTop: 12 }}
+                    formatter={v => <span style={{ color: "#475569", fontWeight: 500 }}>{v}</span>}
                   />
-                  <Area
-                    type="monotone" dataKey="total" name="Total casos"
-                    stroke="#1793a5" strokeWidth={2.5}
-                    fill="url(#gradTotal)"
-                    dot={{ r: 4, fill: "#1793a5", strokeWidth: 2, stroke: "white" }}
+                  <Area type="monotone" dataKey="total" name="Total casos"
+                    stroke="#1793a5" strokeWidth={2.5} fill="url(#gTotal)"
+                    dot={{ r: 4, fill: "white", stroke: "#1793a5", strokeWidth: 2 }}
                     activeDot={{ r: 6, fill: "#1793a5" }}
                   />
-                  <Line
-                    type="monotone" dataKey="conSoplo" name="Con soplo"
-                    stroke="#ef4444" strokeWidth={2.5} strokeDasharray="5 3"
-                    dot={{ r: 4, fill: "#ef4444", strokeWidth: 2, stroke: "white" }}
+                  <Line type="monotone" dataKey="conSoplo" name="Con soplo"
+                    stroke="#ef4444" strokeWidth={2.5} strokeDasharray="6 3"
+                    dot={{ r: 4, fill: "white", stroke: "#ef4444", strokeWidth: 2 }}
                     activeDot={{ r: 6, fill: "#ef4444" }}
                   />
                 </ComposedChart>
               </ResponsiveContainer>
             ) : (
-              <p className="text-sm text-muted-foreground py-8 text-center">Sin datos en las últimas 10 semanas</p>
+              <p className="text-sm text-slate-400 py-10 text-center">Sin datos en las últimas 10 semanas</p>
             )}
-          </CardContent>
-        </Card>
+          </ChartCard>
+        </div>
       </div>
 
-      {/* ── Fila 3: Raza/Edad + Confianza CNN ── */}
+      {/* ── Fila 3: Raza/Edad + Confianza CNN ─────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
-        {/* Soplos por Raza y Rango de Edad */}
-        <Card className="border-0 shadow-sm">
-          <CardHeader className="pb-1">
-            <CardTitle className="text-sm font-semibold text-gray-800">Soplos por Raza y Rango de Edad</CardTitle>
-            <CardDescription className="text-xs">Solo evaluaciones con soplo detectado (grado ≠ AUSENTE)</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {data.soplosPorRaza.length > 0 ? (
-              <ResponsiveContainer width="100%" height={260}>
-                <BarChart
-                  layout="vertical"
-                  data={totalSoplosRaza}
-                  margin={{ top: 5, right: 45, left: 10, bottom: 5 }}
-                >
-                  <CartesianGrid strokeDasharray="4 4" horizontal={false} stroke="#f0f0f0" />
-                  <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
-                  <YAxis
-                    type="category" dataKey="raza" width={120}
-                    tick={{ fontSize: 10, fill: "#374151" }} axisLine={false} tickLine={false}
-                  />
-                  <Tooltip content={<TooltipRaza />} />
-                  <Legend
-                    wrapperStyle={{ fontSize: 11, paddingTop: 8 }}
-                    formatter={(value) => <span style={{ color: "#374151" }}>{value}</span>}
-                  />
-                  {RANGOS_EDAD.map((rango, i) => (
-                    <Bar key={rango} dataKey={rango} stackId="a" fill={EDAD_COLORS[i]}
-                      radius={i === RANGOS_EDAD.length - 1 ? [0, 4, 4, 0] : [0, 0, 0, 0]}>
-                      {/* Etiqueta de total al final de la última barra */}
-                      {i === RANGOS_EDAD.length - 1 && (
-                        <LabelList
-                          dataKey="_total"
-                          position="right"
-                          style={{ fontSize: 11, fontWeight: 700, fill: "#374151" }}
-                        />
-                      )}
-                    </Bar>
-                  ))}
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <p className="text-sm text-muted-foreground py-8 text-center">Sin soplos registrados</p>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Confianza Promedio del Modelo CNN */}
-        <Card className="border-0 shadow-sm">
-          <CardHeader className="pb-1">
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <CardTitle className="text-sm font-semibold text-gray-800 flex items-center gap-1.5">
-                  <Brain className="h-4 w-4 text-violet-500" />
-                  Confianza del Modelo CNN
-                </CardTitle>
-                <CardDescription className="text-xs mt-0.5">Precisión promedio por grado Levine</CardDescription>
-              </div>
-              {data.confianzaGeneral > 0 && (
-                <div className="text-right flex-shrink-0">
-                  <p className="text-xs text-muted-foreground">Promedio general</p>
-                  <p className="text-xl font-extrabold text-violet-600">{data.confianzaGeneral}%</p>
-                </div>
-              )}
-            </div>
-          </CardHeader>
-          <CardContent>
-            {confianzaData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={confianzaData} margin={{ top: 20, right: 10, left: -15, bottom: 5 }}>
-                  <defs>
-                    {confianzaData.map((d) => (
-                      <linearGradient key={d.grado} id={`gradConf_${d.grado.replace(/\s|\//g, "_")}`} x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%"   stopColor={GRADO_COLORS[d.grado]} stopOpacity={1} />
-                        <stop offset="100%" stopColor={GRADO_COLORS[d.grado]} stopOpacity={0.55} />
-                      </linearGradient>
-                    ))}
-                  </defs>
-                  <CartesianGrid strokeDasharray="4 4" vertical={false} stroke="#f0f0f0" />
-                  <XAxis dataKey="grado" tick={{ fontSize: 11, fill: "#6b7280" }} axisLine={false} tickLine={false} />
-                  <YAxis domain={[0, 100]} unit="%" tick={{ fontSize: 11, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
-                  <Tooltip content={<TooltipConfianza />} />
-                  <Legend
-                    wrapperStyle={{ fontSize: 11, paddingTop: 4 }}
-                    payload={[{ value: "Confianza promedio (%)", type: "square", color: "#8b5cf6" }]}
-                  />
-                  {data.confianzaGeneral > 0 && (
-                    <ReferenceLine
-                      y={data.confianzaGeneral} stroke="#8b5cf6" strokeDasharray="5 3" strokeWidth={1.5}
-                      label={{ value: `Prom. ${data.confianzaGeneral}%`, position: "insideTopRight", fontSize: 10, fill: "#8b5cf6" }}
-                    />
-                  )}
-                  <Bar dataKey="confianza" name="Confianza %" radius={[6, 6, 0, 0]} maxBarSize={60}>
-                    <LabelList content={<LabelConfianza />} />
-                    {confianzaData.map((d) => (
-                      <Cell key={d.grado} fill={`url(#gradConf_${d.grado.replace(/\s|\//g, "_")})`} />
-                    ))}
+        {/* Soplos por Raza y Edad */}
+        <ChartCard
+          title="Prevalencia de Soplos por Raza"
+          description="Solo evaluaciones con soplo detectado · segmentado por rango de edad"
+        >
+          {data.soplosPorRaza.length > 0 ? (
+            <ResponsiveContainer width="100%" height={270}>
+              <BarChart layout="vertical" data={razaData}
+                margin={{ top: 5, right: 50, left: 10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="4 4" horizontal={false} stroke="#f1f5f9" />
+                <XAxis type="number" allowDecimals={false}
+                  tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+                <YAxis type="category" dataKey="raza" width={122}
+                  tick={{ fontSize: 10, fill: "#475569", fontWeight: 500 }} axisLine={false} tickLine={false} />
+                <Tooltip content={<TooltipRaza />} cursor={{ fill: "#f8fafc" }} />
+                <Legend iconType="square" iconSize={9} wrapperStyle={{ fontSize: 11, paddingTop: 10 }}
+                  formatter={v => <span style={{ color: "#475569" }}>{v}</span>} />
+                {RANGOS_EDAD.map((rango, i) => (
+                  <Bar key={rango} dataKey={rango} stackId="a" fill={EDAD_COLORS[i]}
+                    radius={i === RANGOS_EDAD.length - 1 ? [0, 6, 6, 0] : [0, 0, 0, 0]}>
+                    {i === RANGOS_EDAD.length - 1 && (
+                      <LabelList dataKey="_total" position="right"
+                        style={{ fontSize: 11, fontWeight: 700, fill: "#475569" }} />
+                    )}
                   </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="py-8 text-center">
-                <Brain className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
-                <p className="text-sm text-muted-foreground">Sin datos de confianza aún.</p>
-                <p className="text-xs text-muted-foreground mt-1">Se registrará con las nuevas evaluaciones de audio.</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* ── Tabla de últimas evaluaciones ── */}
-      <Card className="border-0 shadow-sm">
-        <CardHeader className="pb-2">
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="text-sm font-semibold text-gray-800">Últimas Evaluaciones</CardTitle>
-              <CardDescription className="text-xs">Las 5 evaluaciones más recientes registradas</CardDescription>
-            </div>
-            <TrendingUp className="w-4 h-4 text-muted-foreground" />
-          </div>
-        </CardHeader>
-        <CardContent>
-          {data.evaluacionesRecientes.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-4 text-center">Sin evaluaciones registradas.</p>
+                ))}
+              </BarChart>
+            </ResponsiveContainer>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-100">
-                    <th className="text-left py-2.5 pr-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">#</th>
-                    <th className="text-left py-2.5 pr-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Fecha</th>
-                    <th className="text-left py-2.5 pr-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Paciente</th>
-                    <th className="text-left py-2.5 pr-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Propietario</th>
-                    <th className="text-left py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Resultado</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {data.evaluacionesRecientes.map((ev, i) => (
-                    <tr key={ev.id} className="hover:bg-gray-50/80 transition-colors">
-                      <td className="py-3 pr-4 text-xs text-muted-foreground font-mono">{i + 1}</td>
-                      <td className="py-3 pr-4 text-xs text-gray-600 whitespace-nowrap">
-                        {ev.fecha ? formatDateDDMMYYYY(ev.fecha) : "—"}
-                      </td>
-                      <td className="py-3 pr-4 font-semibold text-gray-800">{ev.perro}</td>
-                      <td className="py-3 pr-4 text-gray-500 text-xs">{ev.propietario}</td>
-                      <td className="py-3">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${GRADO_BADGE[ev.gradoLevine] ?? "bg-gray-100 text-gray-800 border border-gray-200"}`}>
-                          {ev.gradoLevine}
-                        </span>
-                      </td>
-                    </tr>
+            <p className="text-sm text-slate-400 py-10 text-center">Sin soplos registrados</p>
+          )}
+        </ChartCard>
+
+        {/* Confianza CNN */}
+        <ChartCard
+          title="Confianza del Modelo CNN"
+          description="Precisión promedio de predicción por grado Levine"
+          action={
+            data.confianzaGeneral > 0 ? (
+              <div className="text-right flex-shrink-0">
+                <p className="text-[10px] text-slate-400 uppercase tracking-wider">Promedio</p>
+                <div className="flex items-baseline gap-1 justify-end">
+                  <span className="text-2xl font-extrabold text-violet-600">{data.confianzaGeneral}</span>
+                  <span className="text-sm font-bold text-violet-400">%</span>
+                </div>
+              </div>
+            ) : undefined
+          }
+        >
+          {confianzaData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={270}>
+              <BarChart data={confianzaData} margin={{ top: 22, right: 10, left: -20, bottom: 5 }}>
+                <defs>
+                  {confianzaData.map(d => (
+                    <linearGradient key={d.grado} id={`gc_${d.grado.replace(/[\s/]/g,"_")}`} x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%"   stopColor={GRADO_COLORS[d.grado]} stopOpacity={1} />
+                      <stop offset="100%" stopColor={GRADO_COLORS[d.grado]} stopOpacity={0.5} />
+                    </linearGradient>
                   ))}
-                </tbody>
-              </table>
+                </defs>
+                <CartesianGrid strokeDasharray="4 4" vertical={false} stroke="#f1f5f9" />
+                <XAxis dataKey="grado" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+                <YAxis domain={[0, 100]} unit="%" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+                <Tooltip content={<TooltipConfianza />} cursor={{ fill: "#f8fafc" }} />
+                <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, paddingTop: 10 }}
+                  payload={[{ value: "Confianza promedio (%)", type: "circle" as any, color: "#8b5cf6" }]} />
+                {data.confianzaGeneral > 0 && (
+                  <ReferenceLine y={data.confianzaGeneral} stroke="#8b5cf6" strokeDasharray="5 4" strokeWidth={1.5}
+                    label={{ value: `Prom. ${data.confianzaGeneral}%`, position: "insideTopRight", fontSize: 10, fill: "#7c3aed", fontWeight: 600 }} />
+                )}
+                <Bar dataKey="confianza" name="Confianza %" radius={[8, 8, 0, 0]} maxBarSize={72}>
+                  <LabelList content={<LabelConfianza />} />
+                  {confianzaData.map(d => (
+                    <Cell key={d.grado} fill={`url(#gc_${d.grado.replace(/[\s/]/g,"_")})`} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-10 gap-3">
+              <div className="w-12 h-12 bg-violet-50 rounded-2xl flex items-center justify-center">
+                <Brain className="w-6 h-6 text-violet-300" />
+              </div>
+              <p className="text-sm text-slate-400">Sin datos de confianza aún</p>
+              <p className="text-xs text-slate-300">Se registrará con las nuevas evaluaciones de audio</p>
             </div>
           )}
-        </CardContent>
-      </Card>
+        </ChartCard>
+      </div>
+
+      {/* ── Tabla de últimas evaluaciones ──────────────── */}
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+        <div className="px-6 py-4 border-b border-slate-50 flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-bold text-slate-800 tracking-tight">Últimas Evaluaciones</h3>
+            <p className="text-xs text-slate-400 mt-0.5">Las 5 evaluaciones más recientes registradas en el sistema</p>
+          </div>
+          <TrendingUp className="w-4 h-4 text-slate-300" />
+        </div>
+        {data.evaluacionesRecientes.length === 0 ? (
+          <div className="py-12 text-center">
+            <ClipboardList className="w-8 h-8 text-slate-200 mx-auto mb-2" />
+            <p className="text-sm text-slate-400">Sin evaluaciones registradas</p>
+          </div>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-slate-50/60">
+                <th className="text-left px-6 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest w-10">#</th>
+                <th className="text-left px-4 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Fecha</th>
+                <th className="text-left px-4 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Paciente</th>
+                <th className="text-left px-4 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Propietario</th>
+                <th className="text-left px-4 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Resultado</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.evaluacionesRecientes.map((ev, i) => (
+                <tr key={ev.id} className="border-t border-slate-50 hover:bg-slate-50/60 transition-colors">
+                  <td className="px-6 py-3.5 text-xs text-slate-300 font-mono font-medium">{String(i + 1).padStart(2, "0")}</td>
+                  <td className="px-4 py-3.5 text-xs text-slate-500 whitespace-nowrap">
+                    {ev.fecha ? formatDateDDMMYYYY(ev.fecha) : "—"}
+                  </td>
+                  <td className="px-4 py-3.5 font-semibold text-slate-700">{ev.perro}</td>
+                  <td className="px-4 py-3.5 text-xs text-slate-400">{ev.propietario}</td>
+                  <td className="px-4 py-3.5">
+                    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${GRADO_BADGE_CLS[ev.gradoLevine] ?? "bg-slate-100 text-slate-600 ring-1 ring-slate-200"}`}>
+                      {ev.gradoLevine}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
 
     </div>
   )
