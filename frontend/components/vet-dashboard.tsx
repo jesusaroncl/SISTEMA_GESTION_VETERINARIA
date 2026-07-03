@@ -4,9 +4,9 @@ import { useEffect, useState, useCallback } from "react"
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer, Cell, LabelList,
-  ComposedChart, Area, Line,
+  ComposedChart, Line,
 } from "recharts"
-import { Users, Dog, ClipboardList, Activity, AlertCircle, RefreshCw } from "lucide-react"
+import { Users, Dog, ClipboardList, Activity, AlertCircle, RefreshCw, MapPin, BrainCircuit } from "lucide-react"
 import { formatDateDDMMYYYY } from "@/lib/date-utils"
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:5000"
@@ -24,9 +24,11 @@ const GRADO_BADGE: Record<string, string> = {
   "III /VI": "bg-red-50 text-red-700 ring-1 ring-red-300",
 }
 
-const RANGOS_EDAD  = ["<7y", "7-10y", ">10y"]
-const EDAD_COLORS  = ["#1793a5", "#f97316", "#7c3aed"]
-const ORDEN_GRADOS = ["AUSENTE", "I /VI", "II /VI", "III /VI"]
+const RANGOS_EDAD     = ["<7y", "7-10y", ">10y"]
+const EDAD_COLORS     = ["#1793a5", "#f97316", "#7c3aed"]
+const ORDEN_GRADOS    = ["AUSENTE", "I /VI", "II /VI", "III /VI"]
+const GRADOS_SOPLO    = ["I /VI", "II /VI", "III /VI"]
+const DISTRITO_COLORS = ["#06b6d4", "#f59e0b", "#ef4444"]
 
 type DashboardData = {
   totalPropietarios: number
@@ -42,6 +44,7 @@ type DashboardData = {
     idCorto: string; fecha: string | null; gradoLevine: string
     perro: string; raza: string; especie: string; propietario: string; resultado: string
   }[]
+  soplosPorDistrito: { distrito: string; "I /VI": number; "II /VI": number; "III /VI": number }[]
 }
 
 /* ── Tooltip Tendencia ───────────────────────────────── */
@@ -84,6 +87,32 @@ const TooltipRaza = ({ active, payload, label }: any) => {
   )
 }
 
+const TooltipDistrito = ({ active, payload, label }: any) => {
+  if (!active || !payload?.length) return null
+  const total = payload.reduce((s: number, p: any) => s + (p.value || 0), 0)
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg shadow-lg px-3 py-2 text-xs min-w-[180px]">
+      <div className="flex items-center gap-1.5 mb-2">
+        <MapPin className="w-3 h-3 text-[#1793a5]" />
+        <p className="font-bold text-gray-700">{label}</p>
+      </div>
+      {payload.map((p: any) => p.value > 0 && (
+        <div key={p.dataKey} className="flex items-center justify-between gap-3 mb-1">
+          <div className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-sm" style={{ background: p.fill }} />
+            <span className="text-gray-500">{p.dataKey}</span>
+          </div>
+          <span className="font-bold">{p.value} caso{p.value !== 1 ? "s" : ""}</span>
+        </div>
+      ))}
+      <div className="mt-1.5 pt-1.5 border-t border-gray-100 flex justify-between">
+        <span className="text-gray-400">Total soplos</span>
+        <span className="font-bold text-gray-800">{total}</span>
+      </div>
+    </div>
+  )
+}
+
 /* ── Campana de Gauss SVG ────────────────────────────── */
 function BellCurve() {
   return (
@@ -94,7 +123,6 @@ function BellCurve() {
           <stop offset="100%" stopColor="#1793a5" stopOpacity={0.04} />
         </linearGradient>
       </defs>
-      {/* Campana suavizada con bezier */}
       <path
         d="M5,72 C25,72 40,68 55,55 C70,42 80,8 100,8 C120,8 130,42 145,55 C160,68 175,72 195,72"
         fill="none" stroke="#1793a5" strokeWidth={2.5} strokeLinecap="round"
@@ -103,7 +131,6 @@ function BellCurve() {
         d="M5,72 C25,72 40,68 55,55 C70,42 80,8 100,8 C120,8 130,42 145,55 C160,68 175,72 195,72 L195,76 L5,76 Z"
         fill="url(#bellFill)"
       />
-      {/* Línea central */}
       <line x1="100" y1="8" x2="100" y2="72" stroke="#1793a5" strokeWidth={1} strokeDasharray="3 2" opacity={0.4} />
     </svg>
   )
@@ -174,14 +201,14 @@ export function VetDashboard({ username }: { username: string }) {
     </div>
   )
 
-  /* ── Datos para gráficos ── */
   const distribucionData = ORDEN_GRADOS.map(g => ({
-    grado: g.replace(" /VI", "/VI"),   // "I /VI" → "I/VI" para eje más compacto
+    grado: g.replace(" /VI", "/VI"),
     gradoFull: g,
     cantidad: data.distribucionGrados[g] ?? 0,
   }))
 
   const tendenciaData = data.tendenciaSemanal.map((s, i) => ({ ...s, semana: i + 1 }))
+  const distritoBarHeight = Math.max(220, (data.soplosPorDistrito?.length ?? 0) * 44)
 
   return (
     <div className="space-y-5">
@@ -196,10 +223,10 @@ export function VetDashboard({ username }: { username: string }) {
 
       {/* ── KPI Cards ──────────────────────────────────── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <KpiCard icon={Users}        iconBg="bg-[#e8f7f9]" iconColor="text-[#1793a5]"  value={data.totalPropietarios}  label="Propietarios" />
-        <KpiCard icon={Dog}          iconBg="bg-orange-50" iconColor="text-orange-500" value={data.totalPerros}         label="Pacientes Caninos" />
-        <KpiCard icon={ClipboardList}iconBg="bg-blue-50"   iconColor="text-blue-500"   value={data.totalEvaluaciones}  label="Total Evaluaciones" />
-        <KpiCard icon={Activity}     iconBg="bg-[#e8f7f9]" iconColor="text-[#1793a5]"  value={`${data.tasaHallazgo}%`} label="Tasa de Hallazgo de Soplos" />
+        <KpiCard icon={Users}         iconBg="bg-[#e8f7f9]" iconColor="text-[#1793a5]"  value={data.totalPropietarios}  label="Propietarios" />
+        <KpiCard icon={Dog}           iconBg="bg-orange-50" iconColor="text-orange-500" value={data.totalPerros}         label="Pacientes Caninos" />
+        <KpiCard icon={ClipboardList} iconBg="bg-blue-50"   iconColor="text-blue-500"   value={data.totalEvaluaciones}  label="Total Evaluaciones" />
+        <KpiCard icon={Activity}      iconBg="bg-[#e8f7f9]" iconColor="text-[#1793a5]"  value={`${data.tasaHallazgo}%`} label="Tasa de Hallazgo de Soplos" />
       </div>
 
       {/* ── Cuerpo principal ───────────────────────────── */}
@@ -208,14 +235,12 @@ export function VetDashboard({ username }: { username: string }) {
         {/* Columna izquierda (2/5) */}
         <div className="lg:col-span-2 flex flex-col gap-3">
 
-          {/* Distribución de Grado de Soplo */}
           <Panel
             title="Distribución de Grado de Soplo"
             icon={<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>}
           >
             <ResponsiveContainer width="100%" height={180}>
-              <BarChart data={distribucionData} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}
-                barCategoryGap="30%">
+              <BarChart data={distribucionData} margin={{ top: 5, right: 5, left: -25, bottom: 0 }} barCategoryGap="30%">
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
                 <XAxis dataKey="grado" tick={{ fontSize: 10, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
                 <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
@@ -230,7 +255,6 @@ export function VetDashboard({ username }: { username: string }) {
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
-            {/* Mini leyenda */}
             <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1">
               {distribucionData.filter(d => d.cantidad > 0).map(d => (
                 <div key={d.gradoFull} className="flex items-center gap-1">
@@ -241,7 +265,6 @@ export function VetDashboard({ username }: { username: string }) {
             </div>
           </Panel>
 
-          {/* Tendencia Semanal */}
           <Panel
             title="Tendencia Semanal de Hallazgos"
             icon={<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>}
@@ -257,14 +280,10 @@ export function VetDashboard({ username }: { username: string }) {
                     formatter={v => <span style={{ color: "#6b7280" }}>{v}</span>} />
                   <Line type="monotone" dataKey="total" name="Total Casos"
                     stroke="#1793a5" strokeWidth={2} strokeDasharray="5 3"
-                    dot={{ r: 3, fill: "#1793a5", strokeWidth: 0 }}
-                    activeDot={{ r: 5 }}
-                  />
-                  <Line type="monotone" dataKey="conSoplo" name="Grado IV+"
+                    dot={{ r: 3, fill: "#1793a5", strokeWidth: 0 }} activeDot={{ r: 5 }} />
+                  <Line type="monotone" dataKey="conSoplo" name="Con Soplo"
                     stroke="#f97316" strokeWidth={2}
-                    dot={{ r: 3, fill: "#f97316", strokeWidth: 0 }}
-                    activeDot={{ r: 5 }}
-                  />
+                    dot={{ r: 3, fill: "#f97316", strokeWidth: 0 }} activeDot={{ r: 5 }} />
                 </ComposedChart>
               </ResponsiveContainer>
             ) : (
@@ -322,14 +341,12 @@ export function VetDashboard({ username }: { username: string }) {
             {/* Nivel de Confianza CNN (1/3) */}
             <div className="col-span-1">
               <div className="bg-white rounded-xl border border-gray-100 shadow-sm h-full flex flex-col p-4">
-                {/* Título + badge AI */}
                 <div className="flex items-start gap-1.5 mb-3">
-                  <span className="mt-0.5 text-[10px] font-bold bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded flex-shrink-0">AI</span>
+                  <BrainCircuit className="w-4 h-4 text-[#1793a5] flex-shrink-0 mt-0.5" />
                   <p className="text-xs font-bold text-gray-700 leading-tight">
                     Nivel de Confianza Promedio del Modelo CNN
                   </p>
                 </div>
-
                 <div className="flex-1 flex flex-col items-center justify-center gap-2">
                   {data.confianzaGeneral > 0 ? (
                     <>
@@ -341,10 +358,7 @@ export function VetDashboard({ username }: { username: string }) {
                         {data.confianzaGeneral >= 85 ? "Excelente precisión" :
                          data.confianzaGeneral >= 75 ? "Buena precisión" : "Precisión moderada"}
                       </p>
-                      <div className="w-full mt-2">
-                        <BellCurve />
-                      </div>
-                      {/* Desglose por grado */}
+                      <div className="w-full mt-2"><BellCurve /></div>
                       {data.confianzaPorGrado.length > 0 && (
                         <div className="w-full mt-1 space-y-1.5">
                           {ORDEN_GRADOS.map(g => {
@@ -370,10 +384,81 @@ export function VetDashboard({ username }: { username: string }) {
                 </div>
               </div>
             </div>
-
           </div>
         </div>
       </div>
+
+      {/* ── Distribución por Distrito ──────────────────── */}
+      <Panel
+        title="Distribución de Grados de Soplo por Distrito"
+        icon={<MapPin className="w-4 h-4" />}
+      >
+        {data.soplosPorDistrito?.length > 0 ? (
+          <>
+            <ResponsiveContainer width="100%" height={distritoBarHeight}>
+              <BarChart
+                layout="vertical"
+                data={data.soplosPorDistrito}
+                margin={{ top: 4, right: 50, left: 10, bottom: 4 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f3f4f6" />
+                <XAxis
+                  type="number"
+                  allowDecimals={false}
+                  tick={{ fontSize: 10, fill: "#9ca3af" }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis
+                  type="category"
+                  dataKey="distrito"
+                  width={110}
+                  tick={{ fontSize: 10, fill: "#4b5563", fontWeight: 500 }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <Tooltip content={<TooltipDistrito />} cursor={{ fill: "#f9fafb" }} />
+                <Legend
+                  iconType="square"
+                  iconSize={9}
+                  wrapperStyle={{ fontSize: 10, paddingTop: 10 }}
+                  formatter={v => <span style={{ color: "#6b7280" }}>{v}</span>}
+                />
+                {GRADOS_SOPLO.map((grado, i) => (
+                  <Bar
+                    key={grado}
+                    dataKey={grado}
+                    stackId="d"
+                    fill={DISTRITO_COLORS[i]}
+                    radius={i === GRADOS_SOPLO.length - 1 ? [0, 4, 4, 0] : [0, 0, 0, 0]}
+                  >
+                    {i === GRADOS_SOPLO.length - 1 && (
+                      <LabelList
+                        valueAccessor={(entry: any) =>
+                          GRADOS_SOPLO.reduce((s, g) => s + ((entry[g] as number) || 0), 0) || null
+                        }
+                        position="right"
+                        style={{ fontSize: 10, fontWeight: 700, fill: "#6b7280" }}
+                      />
+                    )}
+                  </Bar>
+                ))}
+              </BarChart>
+            </ResponsiveContainer>
+            <div className="flex items-center gap-4 mt-2 flex-wrap">
+              {GRADOS_SOPLO.map((g, i) => (
+                <div key={g} className="flex items-center gap-1.5">
+                  <span className="w-3 h-3 rounded-sm" style={{ background: DISTRITO_COLORS[i] }} />
+                  <span className="text-[10px] text-gray-500 font-medium">{g}</span>
+                </div>
+              ))}
+              <span className="ml-auto text-[10px] text-gray-400 italic">Solo casos con soplo detectado</span>
+            </div>
+          </>
+        ) : (
+          <p className="text-xs text-gray-400 py-8 text-center">Sin datos de distrito disponibles</p>
+        )}
+      </Panel>
 
       {/* ── Tabla de Últimas Evaluaciones ──────────────── */}
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">

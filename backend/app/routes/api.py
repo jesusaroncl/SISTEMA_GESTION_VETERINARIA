@@ -546,6 +546,30 @@ def get_dashboard():
             "resultado": "Sin Soplo" if (e.grado_levine or "AUSENTE") == "AUSENTE" else "Soplo Cardíaco",
         })
 
+    # --- Soplos por distrito ---
+    distrito_raw = db.session.execute(
+        db.select(Owner.distrito, Evaluation.grado_levine, func.count(Evaluation.id))
+        .join(Dog, Dog.owner_id == Owner.id)
+        .join(Evaluation, Evaluation.dog_id == Dog.id)
+        .where(Evaluation.grado_levine != 'AUSENTE')
+        .group_by(Owner.distrito, Evaluation.grado_levine)
+    ).all()
+
+    GRADOS_SOPLO = ["I /VI", "II /VI", "III /VI"]
+    distrito_map: dict = {}
+    for distrito, grado, count in distrito_raw:
+        d = distrito or "Sin distrito"
+        if d not in distrito_map:
+            distrito_map[d] = {"distrito": d, "I /VI": 0, "II /VI": 0, "III /VI": 0}
+        if grado in GRADOS_SOPLO:
+            distrito_map[d][grado] += count
+
+    soplos_por_distrito = sorted(
+        distrito_map.values(),
+        key=lambda x: x["I /VI"] + x["II /VI"] + x["III /VI"],
+        reverse=True,
+    )
+
     return jsonify({
         "totalPropietarios": total_owners,
         "totalPerros": total_dogs,
@@ -557,6 +581,7 @@ def get_dashboard():
         "confianzaPorGrado": confianza_por_grado,
         "confianzaGeneral": confianza_general,
         "evaluacionesRecientes": recent_list,
+        "soplosPorDistrito": soplos_por_distrito,
     }), 200
 
 
