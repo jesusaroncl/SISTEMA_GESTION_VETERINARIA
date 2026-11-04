@@ -4,7 +4,7 @@ import datetime
 import uuid # Necesario para los IDs de Owner y Dog
 
 # --- Definiciones de Tipos de Roles ---
-ROLES = ["asistente", "veterinario"]
+ROLES = ["administrador", "asistente", "veterinario"]
 
 class Ubigeo(db.Model):
     __tablename__ = 'ubigeo'
@@ -18,10 +18,26 @@ class Breed(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     nombre = db.Column(db.String(100), nullable=False, unique=True)
 
+class Clinic(db.Model):
+    """Tenant: cada clínica tiene sus propios usuarios, propietarios, perros y evaluaciones."""
+    __tablename__ = 'clinics'
+    id = db.Column(db.Integer, primary_key=True)
+    nombre = db.Column(db.String(150), nullable=False)
+    ruc = db.Column(db.String(11), unique=True, nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.datetime.utcnow)
+
+    users = db.relationship('User', backref='clinic', lazy=True)
+    owners = db.relationship('Owner', backref='clinic', lazy=True)
+
 class User(db.Model):
     __tablename__ = 'users'
     id = db.Column(db.Integer, primary_key=True)
+    clinic_id = db.Column(db.Integer, db.ForeignKey('clinics.id'), nullable=False)
     username = db.Column(db.String(64), unique=True, nullable=False)
+    email = db.Column(db.String(120), unique=True, nullable=True)
+    reset_code_hash = db.Column(db.String(64), nullable=True)
+    reset_code_expires = db.Column(db.DateTime, nullable=True)
+    reset_code_attempts = db.Column(db.Integer, nullable=False, default=0, server_default='0')
     password_hash = db.Column(db.String(128), nullable=False)
     role = db.Column(db.Enum(*ROLES, name='user_roles'), nullable=False, default='asistente')
 
@@ -36,18 +52,23 @@ class User(db.Model):
         return create_access_token(
             identity=str(self.id), 
             expires_delta=expires_in, 
-            additional_claims={'role': self.role}
+            additional_claims={'role': self.role, 'clinic_id': self.clinic_id}
         )
 
 class Owner(db.Model):
     __tablename__ = 'owners'
+    __table_args__ = (
+        db.UniqueConstraint('clinic_id', 'dni', name='uq_owners_clinic_dni'),
+        db.UniqueConstraint('clinic_id', 'correo', name='uq_owners_clinic_correo'),
+    )
+    clinic_id = db.Column(db.Integer, db.ForeignKey('clinics.id'), nullable=False)
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     nombres = db.Column(db.String(100), nullable=False)
     apellidos = db.Column(db.String(100), nullable=False)
     tipo_documento = db.Column(db.String(50), nullable=False, default='DNI')
-    dni = db.Column(db.String(20), unique=True, nullable=False)
+    dni = db.Column(db.String(20), nullable=False)
     celular = db.Column(db.String(9))
-    correo = db.Column(db.String(120), unique=True, nullable=False)
+    correo = db.Column(db.String(120), nullable=False)
     direccion = db.Column(db.String(255))
     sexo = db.Column(db.String(20))
     fechaNacimiento = db.Column(db.Date)

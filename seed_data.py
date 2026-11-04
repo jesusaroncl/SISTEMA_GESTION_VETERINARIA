@@ -6,7 +6,7 @@ Uso:
 """
 import datetime, uuid, sys
 from app import create_app, db
-from app.models import Owner, Dog, Evaluation
+from app.models import Owner, Dog, Evaluation, Clinic
 
 app = create_app()
 
@@ -139,11 +139,19 @@ def seed():
             print("Ya existen propietarios. Saltando seed.")
             sys.exit(0)
 
+        clinic = db.session.execute(db.select(Clinic)).scalars().first()
+        if not clinic:
+            clinic = Clinic(nombre="Clínica Demo", ruc="20123456789")
+            db.session.add(clinic)
+            db.session.flush()
+            print("Clínica demo creada (RUC 20123456789). Registra usuarios desde la app.")
+
         print("Insertando propietarios...")
         owner_objects = []
         for od in owners_data:
             o = Owner(
                 id=str(uuid.uuid4()),
+                clinic_id=clinic.id,
                 nombres=od["nombres"], apellidos=od["apellidos"],
                 tipo_documento="DNI", dni=od["dni"],
                 celular=od["celular"], correo=od["correo"],

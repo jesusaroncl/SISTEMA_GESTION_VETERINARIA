@@ -3,7 +3,7 @@ from flask import Blueprint, request, jsonify
 from app import db
 from app.config import Config
 from werkzeug.utils import secure_filename
-from app.models import Owner, Dog, User, Evaluation, Breed, Ubigeo
+from app.models import Owner, Dog, User, Evaluation, Breed, Ubigeo, Clinic
 from flask_jwt_extended import jwt_required, get_jwt
 from sqlalchemy.exc import IntegrityError
 import uuid
@@ -24,6 +24,20 @@ def role_required(role):
             return fn(*args, **kwargs)
         return decorator
     return wrapper
+
+# --- Multitenant: todo se filtra por la clínica del JWT ---
+def current_clinic_id():
+    return get_jwt().get('clinic_id')
+
+def get_owner_scoped(owner_id):
+    """Devuelve el propietario solo si pertenece a la clínica del usuario."""
+    owner = db.session.get(Owner, owner_id)
+    return owner if owner and owner.clinic_id == current_clinic_id() else None
+
+def get_dog_scoped(dog_id):
+    """Devuelve el perro solo si su propietario pertenece a la clínica del usuario."""
+    dog = db.session.get(Dog, dog_id)
+    return dog if dog and dog.owner.clinic_id == current_clinic_id() else None
 
 # --- Serializador de Propietario ---
 def serialize_owner(o: Owner):
@@ -85,6 +99,7 @@ def create_owner():
         return jsonify({"msg": "Faltan campos requeridos"}), 400
 
     new_owner = Owner(
+        clinic_id=current_clinic_id(),
         # id se genera por default en el modelo
         nombres=data['nombres'],
         apellidos=data['apellidos'],
@@ -115,14 +130,14 @@ def create_owner():
 @api.route('/owners', methods=['GET'])
 @jwt_required() 
 def get_owners():
-    owners = db.session.execute(db.select(Owner).order_by(Owner.apellidos)).scalars().all()
+    owners = db.session.execute(db.select(Owner).where(Owner.clinic_id == current_clinic_id()).order_by(Owner.apellidos)).scalars().all()
     owners_list = [serialize_owner(o) for o in owners]
     return jsonify(owners_list), 200
 
 @api.route('/owners/<string:owner_id>', methods=['GET'])
 @jwt_required()
 def get_owner(owner_id):
-    owner = db.session.get(Owner, owner_id)
+    owner = get_owner_scoped(owner_id)
     if not owner:
         return jsonify({"msg": "Propietario no encontrado"}), 404
     return jsonify(serialize_owner(owner)), 200
@@ -130,7 +145,7 @@ def get_owner(owner_id):
 @api.route('/owners/<string:owner_id>', methods=['PUT'])
 @role_required('asistente')
 def update_owner(owner_id):
-    owner = db.session.get(Owner, owner_id)
+    owner = get_owner_scoped(owner_id)
     if not owner:
         return jsonify({"msg": "Propietario no encontrado"}), 404
     
@@ -168,7 +183,7 @@ def update_owner(owner_id):
 @api.route('/owners/<string:owner_id>', methods=['DELETE'])
 @role_required('asistente')
 def delete_owner(owner_id):
-    owner = db.session.get(Owner, owner_id)
+    owner = get_owner_scoped(owner_id)
     if not owner:
         return jsonify({"msg": "Propietario no encontrado"}), 404
 
@@ -190,7 +205,7 @@ def delete_owner(owner_id):
 @api.route('/owners/<string:owner_id>/dogs', methods=['GET'])
 @jwt_required()
 def get_dogs_for_owner(owner_id):
-    owner = db.session.get(Owner, owner_id)
+    owner = get_owner_scoped(owner_id)
     if not owner:
         return jsonify({"msg": "Propietario no encontrado"}), 404
     
@@ -200,7 +215,7 @@ def get_dogs_for_owner(owner_id):
 @api.route('/owners/<string:owner_id>/dogs', methods=['POST'])
 @role_required('asistente')
 def create_dog(owner_id):
-    if not db.session.get(Owner, owner_id):
+    if not get_owner_scoped(owner_id):
         return jsonify({"msg": "Propietario no encontrado"}), 404
         
     data = request.get_json()
@@ -229,7 +244,7 @@ def create_dog(owner_id):
 @api.route('/dogs/<string:dog_id>', methods=['PUT'])
 @role_required('asistente')
 def update_dog(dog_id):
-    dog = db.session.get(Dog, dog_id)
+    dog = get_dog_scoped(dog_id)
     if not dog:
         return jsonify({"msg": "Perro no encontrado"}), 404
     
@@ -254,7 +269,7 @@ def update_dog(dog_id):
 @api.route('/dogs/<string:dog_id>', methods=['DELETE'])
 @role_required('asistente')
 def delete_dog(dog_id):
-    dog = db.session.get(Dog, dog_id)
+    dog = get_dog_scoped(dog_id)
     if not dog:
         return jsonify({"msg": "Perro no encontrado"}), 404
 
@@ -325,7 +340,7 @@ def _clasificacion_por_grado(grado_levine):
 @role_required('veterinario')
 def evaluate_dog_audio(dog_id):
     
-    dog = db.session.get(Dog, dog_id)
+    dog = get_dog_scoped(dog_id)
     if not dog:
         return jsonify({"msg": "Perro no encontrado"}), 404
 
@@ -396,7 +411,7 @@ def create_evaluation():
 
     if not dog_id or not eval_data:
         return jsonify({"msg": "Faltan datos (dogId o evaluationData)"}), 400
-    dog = db.session.get(Dog, dog_id)
+    dog = get_dog_scoped(dog_id)
     if not dog:
         return jsonify({"msg": "Perro no encontrado"}), 404
 
@@ -446,18 +461,25 @@ def get_dashboard():
     """Estadísticas completas para el dashboard del veterinario."""
     from sqlalchemy import func
 
+    cid = current_clinic_id()
+    # Evaluaciones que pertenecen a la clínica del usuario
+    eval_scope = Evaluation.dog_id.in_(
+        db.select(Dog.id).join(Owner, Dog.owner_id == Owner.id).where(Owner.clinic_id == cid)
+    )
+
     # --- Tarjetas de resumen ---
-    total_owners = db.session.execute(db.select(func.count(Owner.id))).scalar() or 0
-    total_dogs = db.session.execute(db.select(func.count(Dog.id))).scalar() or 0
-    total_evals = db.session.execute(db.select(func.count(Evaluation.id))).scalar() or 0
+    total_owners = db.session.execute(db.select(func.count(Owner.id)).where(Owner.clinic_id == cid)).scalar() or 0
+    total_dogs = db.session.execute(db.select(func.count(Dog.id)).join(Owner, Dog.owner_id == Owner.id).where(Owner.clinic_id == cid)).scalar() or 0
+    total_evals = db.session.execute(db.select(func.count(Evaluation.id)).where(eval_scope)).scalar() or 0
     total_con_soplo = db.session.execute(
-        db.select(func.count(Evaluation.id)).where(Evaluation.grado_levine != 'AUSENTE')
+        db.select(func.count(Evaluation.id)).where(eval_scope, Evaluation.grado_levine != 'AUSENTE')
     ).scalar() or 0
     tasa_hallazgo = round(total_con_soplo / total_evals * 100, 1) if total_evals > 0 else 0.0
 
     # --- Distribución por grado Levine ---
     grados_raw = db.session.execute(
         db.select(Evaluation.grado_levine, func.count(Evaluation.id))
+        .where(eval_scope)
         .group_by(Evaluation.grado_levine)
     ).all()
     distribucion_grados = {(g or "AUSENTE"): c for g, c in grados_raw}
@@ -465,7 +487,7 @@ def get_dashboard():
     # --- Tendencia semanal (últimas 10 semanas) ---
     hace_10_semanas = datetime.date.today() - datetime.timedelta(weeks=10)
     evals_recientes = db.session.execute(
-        db.select(Evaluation).where(Evaluation.fecha >= hace_10_semanas)
+        db.select(Evaluation).where(eval_scope, Evaluation.fecha >= hace_10_semanas)
         .order_by(Evaluation.fecha)
     ).scalars().all()
 
@@ -484,7 +506,7 @@ def get_dashboard():
 
     # --- Soplos por raza y rango de edad ---
     evals_con_soplo = db.session.execute(
-        db.select(Evaluation).where(Evaluation.grado_levine != 'AUSENTE')
+        db.select(Evaluation).where(eval_scope, Evaluation.grado_levine != 'AUSENTE')
     ).scalars().all()
 
     raza_map: dict = {}
@@ -514,7 +536,7 @@ def get_dashboard():
     # --- Confianza promedio por grado ---
     confianza_raw = db.session.execute(
         db.select(Evaluation.grado_levine, func.avg(Evaluation.confianza_modelo))
-        .where(Evaluation.confianza_modelo.isnot(None))
+        .where(eval_scope, Evaluation.confianza_modelo.isnot(None))
         .group_by(Evaluation.grado_levine)
     ).all()
     confianza_por_grado = [
@@ -523,13 +545,13 @@ def get_dashboard():
     ]
     confianza_general_raw = db.session.execute(
         db.select(func.avg(Evaluation.confianza_modelo))
-        .where(Evaluation.confianza_modelo.isnot(None))
+        .where(eval_scope, Evaluation.confianza_modelo.isnot(None))
     ).scalar()
     confianza_general = round((confianza_general_raw or 0) * 100, 1)
 
     # --- Evaluaciones recientes ---
     recent_evals = db.session.execute(
-        db.select(Evaluation).order_by(Evaluation.fecha.desc()).limit(5)
+        db.select(Evaluation).where(eval_scope).order_by(Evaluation.fecha.desc()).limit(5)
     ).scalars().all()
     recent_list = []
     for e in recent_evals:
@@ -551,7 +573,7 @@ def get_dashboard():
         db.select(Owner.distrito, Evaluation.grado_levine, func.count(Evaluation.id))
         .join(Dog, Dog.owner_id == Owner.id)
         .join(Evaluation, Evaluation.dog_id == Dog.id)
-        .where(Evaluation.grado_levine != 'AUSENTE')
+        .where(Owner.clinic_id == cid, Evaluation.grado_levine != 'AUSENTE')
         .group_by(Owner.distrito, Evaluation.grado_levine)
     ).all()
 
@@ -589,7 +611,7 @@ def get_dashboard():
 @jwt_required() # Permitir que ambos roles vean el historial
 def get_evaluations_for_dog(dog_id):
     """Obtiene todas las evaluaciones de un perro específico."""
-    dog = db.session.get(Dog, dog_id)
+    dog = get_dog_scoped(dog_id)
     if not dog:
         return jsonify({"msg": "Perro no encontrado"}), 404
     
@@ -605,3 +627,57 @@ def get_evaluations_for_dog(dog_id):
         }
         for e in evals
     ]), 200
+
+
+# ===================================================
+# --- Equipo de la clínica (solo administrador) ---
+# ===================================================
+
+def serialize_user(u: User):
+    return {"id": u.id, "username": u.username, "email": u.email, "role": u.role}
+
+@api.route('/users', methods=['GET'])
+@role_required('administrador')
+def list_users():
+    users = db.session.execute(
+        db.select(User).where(User.clinic_id == current_clinic_id()).order_by(User.username)
+    ).scalars().all()
+    return jsonify([serialize_user(u) for u in users]), 200
+
+@api.route('/users', methods=['POST'])
+@role_required('administrador')
+def create_user():
+    data = request.get_json(silent=True) or {}
+    username = (data.get('username') or '').strip()
+    email = (data.get('email') or '').strip().lower()
+    password = data.get('password') or ''
+    role = data.get('role')
+
+    if not all([username, email, password]):
+        return jsonify({"msg": "Completa usuario, correo y contraseña"}), 400
+    if role not in ("asistente", "veterinario"):
+        return jsonify({"msg": "Rol inválido"}), 400
+    if len(password) < 6:
+        return jsonify({"msg": "La contraseña debe tener al menos 6 caracteres"}), 400
+
+    user = User(username=username, email=email, role=role, clinic_id=current_clinic_id())
+    user.set_password(password)
+    try:
+        db.session.add(user)
+        db.session.commit()
+        return jsonify({"msg": "Usuario creado", "user": serialize_user(user)}), 201
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({"msg": "El usuario o el correo ya están en uso"}), 409
+
+@api.route('/users/<int:user_id>', methods=['DELETE'])
+@role_required('administrador')
+def delete_user(user_id):
+    user = db.session.get(User, user_id)
+    if not user or user.clinic_id != current_clinic_id():
+        return jsonify({"msg": "Usuario no encontrado"}), 404
+    if str(user.id) == get_jwt().get('sub'):
+        return jsonify({"msg": "No puedes eliminar tu propio usuario"}), 400
+    db.session.delete(user)
+    db.session.commit()
+    return jsonify({"msg": "Usuario eliminado"}), 200

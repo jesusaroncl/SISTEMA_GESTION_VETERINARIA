@@ -7,13 +7,12 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import Link from "next/link"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { AlertCircle, Stethoscope } from "lucide-react"
 
 export default function LoginPage() {
   const router = useRouter()
-  const [role, setRole] = useState<"asistente" | "veterinario">("asistente")
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
@@ -45,10 +44,13 @@ export default function LoginPage() {
         localStorage.setItem("access_token", data.access_token) // Guardar el token
         localStorage.setItem("userRole", data.userRole)
         localStorage.setItem("username", data.username)
+        localStorage.setItem("clinicName", data.clinicName || "")
       }
 
       // Redirigir según el rol
-      if (data.userRole === "asistente") {
+      if (data.userRole === "administrador") {
+        router.push("/admin")
+      } else if (data.userRole === "asistente") {
         router.push("/asistente")
       } else {
         router.push("/veterinario")
@@ -106,27 +108,22 @@ export default function LoginPage() {
               />
             </div>
 
-            <div className="space-y-3">
-              <Label>Tipo de Usuario</Label>
-              <RadioGroup value={role} onValueChange={(value) => setRole(value as "asistente" | "veterinario")}>
-                <div className="flex items-center space-x-2 p-3 border rounded-lg hover:bg-[#d0e8ed] transition-colors border-gray-300">
-                  <RadioGroupItem value="asistente" id="asistente" className="border-[#1793a5] text-[#1793a5]" />
-                  <Label htmlFor="asistente" className="flex-1 cursor-pointer font-normal">
-                    Asistente administrativo
-                  </Label>
-                </div>
-                <div className="flex items-center space-x-2 p-3 border rounded-lg hover:bg-[#d0e8ed] transition-colors border-gray-300">
-                  <RadioGroupItem value="veterinario" id="veterinario" className="border-[#1793a5] text-[#1793a5]" />
-                  <Label htmlFor="veterinario" className="flex-1 cursor-pointer font-normal">
-                    Veterinario
-                  </Label>
-                </div>
-              </RadioGroup>
+            <div className="text-right -mt-3">
+              <Link href="/forgot-password" className="text-sm text-[#1793a5] hover:underline">
+                ¿Olvidaste tu contraseña?
+              </Link>
             </div>
 
             <Button type="submit" className="w-full bg-[#1793a5] hover:bg-[#136d7a] text-white" size="lg">
               Iniciar Sesión
             </Button>
+
+            <p className="text-center text-sm text-gray-600">
+              ¿Tu clínica aún no está registrada?{" "}
+              <Link href="/registro" className="text-[#1793a5] font-medium hover:underline">
+                Registrar clínica
+              </Link>
+            </p>
           </form>
         </CardContent>
       </Card>
