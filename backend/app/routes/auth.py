@@ -1,13 +1,13 @@
 import hashlib
 import hmac
 import secrets
-import smtplib
 import datetime
-from email.message import EmailMessage
 from flask import Blueprint, request, jsonify, current_app
+from flask_jwt_extended import jwt_required, get_jwt
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from app import db
-from app.models import User, Clinic
+from app.emails import send_email
+from app.models import User, Clinic, ClinicMembership, ClinicInvitation
 from sqlalchemy.exc import IntegrityError
 
 auth = Blueprint('auth', __name__)
@@ -38,9 +38,10 @@ def register_clinic():
 
     try:
         clinic = Clinic(nombre=nombre, ruc=ruc)
-        admin = User(username=username, email=email, role='administrador', clinic=clinic)
+        admin = User(username=username, email=email)
         admin.set_password(password)
-        db.session.add_all([clinic, admin])
+        membership = ClinicMembership(user=admin, clinic=clinic, role='administrador')
+        db.session.add_all([clinic, admin, membership])
         db.session.commit()
         return jsonify({"msg": f"Clínica {nombre} registrada. Ya puedes iniciar sesión."}), 201
     except IntegrityError:
@@ -51,27 +52,169 @@ def register_clinic():
         return jsonify({"msg": "Error interno del servidor", "error": str(e)}), 500
 
 
+SELECT_TOKEN_MAX_AGE = 300  # segundos para elegir clínica tras el login
+
+
+def _session_payload(user, membership):
+    """Respuesta de sesión: token ligado a la clínica elegida."""
+    return {
+        "access_token": user.get_jwt(membership),
+        "userRole": membership.role,
+        "username": user.username,
+        "clinicName": membership.clinic.nombre,
+        "clinicCount": len(user.memberships),
+    }
+
+
+def _clinic_options(user):
+    return [
+        {"id": m.clinic_id, "nombre": m.clinic.nombre, "role": m.role}
+        for m in sorted(user.memberships, key=lambda m: m.clinic.nombre.lower())
+    ]
+
+
+def _select_serializer():
+    return URLSafeTimedSerializer(current_app.config['SECRET_KEY'], salt='clinic-select')
+
+
+def _membership(user_id, clinic_id):
+    return db.session.execute(
+        db.select(ClinicMembership).filter_by(user_id=user_id, clinic_id=clinic_id)
+    ).scalar_one_or_none()
+
+
 @auth.route('/login', methods=['POST'])
 def login():
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     username = data.get('username')
     password = data.get('password')
     
     user = db.session.execute(db.select(User).filter_by(username=username)).scalar_one_or_none()
 
-    if user and user.check_password(password):
-        # Generar JWT que incluye el rol
-        access_token = user.get_jwt()
-        
-        # Devolvemos los datos que el frontend necesita
-        return jsonify({
-            "access_token": access_token,
-            "userRole": user.role,
-            "username": user.username,
-            "clinicName": user.clinic.nombre,
-        }), 200
-    
-    return jsonify({"msg": "Credenciales inválidas"}), 401
+    if not user or not user.check_password(password or ''):
+        return jsonify({"msg": "Credenciales inválidas"}), 401
+
+    if not user.memberships:
+        return jsonify({"msg": "Tu cuenta no pertenece a ninguna clínica. Pide una invitación al administrador."}), 403
+
+    if len(user.memberships) == 1:
+        return jsonify(_session_payload(user, user.memberships[0])), 200
+
+    # Varias clínicas: se devuelve un token corto solo para elegir con cuál trabajar
+    select_token = _select_serializer().dumps({"uid": user.id, "ph": user.password_hash[-12:]})
+    return jsonify({"selectClinic": True, "selectToken": select_token, "clinics": _clinic_options(user)}), 200
+
+
+@auth.route('/select-clinic', methods=['POST'])
+def select_clinic():
+    data = request.get_json(silent=True) or {}
+    try:
+        payload = _select_serializer().loads(data.get('selectToken') or '', max_age=SELECT_TOKEN_MAX_AGE)
+    except (BadSignature, SignatureExpired):
+        return jsonify({"msg": "La sesión expiró. Vuelve a iniciar sesión."}), 401
+
+    user = db.session.get(User, payload.get('uid'))
+    if not user or user.password_hash[-12:] != payload.get('ph'):
+        return jsonify({"msg": "La sesión expiró. Vuelve a iniciar sesión."}), 401
+
+    membership = _membership(user.id, data.get('clinicId'))
+    if not membership:
+        return jsonify({"msg": "Clínica no válida"}), 403
+    return jsonify(_session_payload(user, membership)), 200
+
+
+@auth.route('/my-clinics', methods=['GET'])
+@jwt_required()
+def my_clinics():
+    user = db.session.get(User, int(get_jwt()['sub']))
+    if not user:
+        return jsonify({"msg": "Usuario no encontrado"}), 404
+    return jsonify({"activeClinicId": get_jwt().get('clinic_id'), "clinics": _clinic_options(user)}), 200
+
+
+@auth.route('/switch-clinic', methods=['POST'])
+@jwt_required()
+def switch_clinic():
+    data = request.get_json(silent=True) or {}
+    user = db.session.get(User, int(get_jwt()['sub']))
+    membership = _membership(user.id, data.get('clinicId')) if user else None
+    if not membership:
+        return jsonify({"msg": "Clínica no válida"}), 403
+    return jsonify(_session_payload(user, membership)), 200
+
+
+# ===================================================
+# --- Invitaciones (enlace público con token) ---
+# ===================================================
+
+def hash_invite_token(token):
+    return hashlib.sha256(f"{current_app.config['SECRET_KEY']}:invite:{token}".encode()).hexdigest()
+
+
+def _pending_invitation(token):
+    inv = db.session.execute(
+        db.select(ClinicInvitation).filter_by(token_hash=hash_invite_token(token or ''))
+    ).scalar_one_or_none()
+    if not inv or inv.accepted_at or inv.expires_at < datetime.datetime.utcnow():
+        return None
+    return inv
+
+
+@auth.route('/invitations/<string:token>', methods=['GET'])
+def get_invitation(token):
+    """Datos para la pantalla de aceptación. Solo los ve quien tiene el enlace (el invitado)."""
+    inv = _pending_invitation(token)
+    if not inv:
+        return jsonify({"msg": "La invitación no es válida o ya expiró"}), 404
+    has_account = db.session.execute(db.select(User.id).filter_by(email=inv.email)).first() is not None
+    return jsonify({
+        "clinicName": inv.clinic.nombre,
+        "role": inv.role,
+        "email": inv.email,
+        "hasAccount": has_account,
+    }), 200
+
+
+@auth.route('/invitations/<string:token>/accept', methods=['POST'])
+def accept_invitation(token):
+    inv = _pending_invitation(token)
+    if not inv:
+        return jsonify({"msg": "La invitación no es válida o ya expiró"}), 404
+
+    data = request.get_json(silent=True) or {}
+    password = data.get('password') or ''
+    user = db.session.execute(db.select(User).filter_by(email=inv.email)).scalar_one_or_none()
+
+    if user:
+        # Cuenta existente: debe demostrar que es suya con su contraseña
+        if not user.check_password(password):
+            return jsonify({"msg": "Contraseña incorrecta"}), 401
+    else:
+        username = (data.get('username') or '').strip()
+        if not username:
+            return jsonify({"msg": "Elige un nombre de usuario"}), 400
+        if len(password) < 6:
+            return jsonify({"msg": "La contraseña debe tener al menos 6 caracteres"}), 400
+        if db.session.execute(db.select(User.id).filter_by(username=username)).first():
+            return jsonify({"msg": "Ese nombre de usuario no está disponible, elige otro"}), 409
+        user = User(username=username, email=inv.email)
+        user.set_password(password)
+        db.session.add(user)
+
+    membership = _membership(user.id, inv.clinic_id) if user.id else None
+    if not membership:
+        membership = ClinicMembership(user=user, clinic_id=inv.clinic_id, role=inv.role)
+        db.session.add(membership)
+    inv.accepted_at = datetime.datetime.utcnow()
+
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({"msg": "Ese nombre de usuario no está disponible, elige otro"}), 409
+
+    db.session.refresh(user)
+    return jsonify(_session_payload(user, membership)), 200
 
 
 CODE_TTL = datetime.timedelta(minutes=10)
@@ -96,24 +239,12 @@ def _find_user(identifier):
 
 
 def _send_code_email(user, code):
-    cfg = current_app.config
-    if not cfg.get('SMTP_HOST'):
-        # Sin SMTP configurado (dev): el código queda en los logs del backend
-        current_app.logger.warning("SMTP no configurado. Código de recuperación para %s: %s", user.username, code)
-        return
-    msg = EmailMessage()
-    msg['Subject'] = 'Código de recuperación - Sistema de Gestión Veterinaria'
-    msg['From'] = cfg['SMTP_FROM']
-    msg['To'] = user.email
-    msg.set_content(
+    send_email(
+        user.email,
+        'Código de recuperación - Sistema de Gestión Veterinaria',
         f"Hola {user.username},\n\nTu código de recuperación es: {code}\n\n"
-        "Es válido por 10 minutos. Si no lo solicitaste, ignora este mensaje."
+        "Es válido por 10 minutos. Si no lo solicitaste, ignora este mensaje.",
     )
-    with smtplib.SMTP(cfg['SMTP_HOST'], cfg['SMTP_PORT'], timeout=10) as smtp:
-        smtp.starttls()
-        if cfg.get('SMTP_USER'):
-            smtp.login(cfg['SMTP_USER'], cfg['SMTP_PASSWORD'])
-        smtp.send_message(msg)
 
 
 @auth.route('/forgot-password', methods=['POST'])

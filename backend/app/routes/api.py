@@ -3,14 +3,38 @@ from flask import Blueprint, request, jsonify
 from app import db
 from app.config import Config
 from werkzeug.utils import secure_filename
-from app.models import Owner, Dog, User, Evaluation, Breed, Ubigeo, Clinic
-from flask_jwt_extended import jwt_required, get_jwt
+from app.models import Owner, Dog, User, Evaluation, Breed, Ubigeo, Clinic, ClinicMembership, ClinicInvitation
+from app.emails import send_email
+from app.routes.auth import hash_invite_token
+from flask_jwt_extended import jwt_required, get_jwt, verify_jwt_in_request
 from sqlalchemy.exc import IntegrityError
 import uuid
+import secrets
 import datetime
+from flask import current_app
 from functools import wraps # Para el decorador role_required
 
 api = Blueprint('api', __name__)
+
+@api.before_request
+def verificar_membresia():
+    """El token indica clínica y rol; se confirma que la membresía sigue vigente
+    (si el administrador quita a alguien, pierde acceso de inmediato)."""
+    if request.method == 'OPTIONS':
+        return None
+    try:
+        verify_jwt_in_request(optional=True)
+    except Exception:
+        return None  # token inválido/expirado: lo resuelve el decorador de la ruta
+    claims = get_jwt()
+    if not claims:
+        return None
+    membership = db.session.execute(
+        db.select(ClinicMembership).filter_by(user_id=int(claims['sub']), clinic_id=claims.get('clinic_id'))
+    ).scalar_one_or_none()
+    if not membership or membership.role != claims.get('role'):
+        return jsonify({"msg": "Tu acceso a esta clínica cambió. Vuelve a iniciar sesión."}), 401
+    return None
 
 # --- Decorador de Roles ---
 def role_required(role):
@@ -730,52 +754,121 @@ def get_evaluations_for_dog(dog_id):
 # ===================================================
 # --- Equipo de la clínica (solo administrador) ---
 # ===================================================
+# Una cuenta puede pertenecer a varias clínicas. Cada clínica solo ve a sus
+# propios integrantes y nunca sabe si una persona trabaja en otra clínica.
 
-def serialize_user(u: User):
-    return {"id": u.id, "username": u.username, "email": u.email, "role": u.role}
+INVITE_TTL = datetime.timedelta(days=7)
+
+def serialize_member(m: ClinicMembership):
+    return {"id": m.user.id, "username": m.user.username, "email": m.user.email, "role": m.role}
+
+def serialize_invitation(inv: ClinicInvitation):
+    return {
+        "id": inv.id, "email": inv.email, "role": inv.role,
+        "createdAt": inv.created_at.isoformat(), "expiresAt": inv.expires_at.isoformat(),
+    }
 
 @api.route('/users', methods=['GET'])
 @role_required('administrador')
 def list_users():
-    users = db.session.execute(
-        db.select(User).where(User.clinic_id == current_clinic_id()).order_by(User.username)
+    members = db.session.execute(
+        db.select(ClinicMembership).join(User)
+        .where(ClinicMembership.clinic_id == current_clinic_id()).order_by(User.username)
     ).scalars().all()
-    return jsonify([serialize_user(u) for u in users]), 200
-
-@api.route('/users', methods=['POST'])
-@role_required('administrador')
-def create_user():
-    data = request.get_json(silent=True) or {}
-    username = (data.get('username') or '').strip()
-    email = (data.get('email') or '').strip().lower()
-    password = data.get('password') or ''
-    role = data.get('role')
-
-    if not all([username, email, password]):
-        return jsonify({"msg": "Completa usuario, correo y contraseña"}), 400
-    if role not in ("asistente", "veterinario"):
-        return jsonify({"msg": "Rol inválido"}), 400
-    if len(password) < 6:
-        return jsonify({"msg": "La contraseña debe tener al menos 6 caracteres"}), 400
-
-    user = User(username=username, email=email, role=role, clinic_id=current_clinic_id())
-    user.set_password(password)
-    try:
-        db.session.add(user)
-        db.session.commit()
-        return jsonify({"msg": "Usuario creado", "user": serialize_user(user)}), 201
-    except IntegrityError:
-        db.session.rollback()
-        return jsonify({"msg": "El usuario o el correo ya están en uso"}), 409
+    return jsonify([serialize_member(m) for m in members]), 200
 
 @api.route('/users/<int:user_id>', methods=['DELETE'])
 @role_required('administrador')
-def delete_user(user_id):
-    user = db.session.get(User, user_id)
-    if not user or user.clinic_id != current_clinic_id():
-        return jsonify({"msg": "Usuario no encontrado"}), 404
-    if str(user.id) == get_jwt().get('sub'):
-        return jsonify({"msg": "No puedes eliminar tu propio usuario"}), 400
-    db.session.delete(user)
+def remove_user(user_id):
+    """Quita a la persona de ESTA clínica. Su cuenta y sus otras clínicas no se tocan."""
+    membership = db.session.execute(
+        db.select(ClinicMembership).filter_by(user_id=user_id, clinic_id=current_clinic_id())
+    ).scalar_one_or_none()
+    if not membership:
+        return jsonify({"msg": "Integrante no encontrado"}), 404
+    if str(user_id) == get_jwt().get('sub'):
+        return jsonify({"msg": "No puedes quitarte a ti mismo"}), 400
+    if membership.role == 'administrador':
+        return jsonify({"msg": "No se puede quitar a un administrador"}), 400
+    db.session.delete(membership)
     db.session.commit()
-    return jsonify({"msg": "Usuario eliminado"}), 200
+    return jsonify({"msg": "Integrante quitado de la clínica"}), 200
+
+@api.route('/invitations', methods=['GET'])
+@role_required('administrador')
+def list_invitations():
+    invs = db.session.execute(
+        db.select(ClinicInvitation).where(
+            ClinicInvitation.clinic_id == current_clinic_id(),
+            ClinicInvitation.accepted_at.is_(None),
+            ClinicInvitation.expires_at > datetime.datetime.utcnow(),
+        ).order_by(ClinicInvitation.created_at.desc())
+    ).scalars().all()
+    return jsonify([serialize_invitation(i) for i in invs]), 200
+
+@api.route('/invitations', methods=['POST'])
+@role_required('administrador')
+def create_invitation():
+    data = request.get_json(silent=True) or {}
+    email = (data.get('email') or '').strip().lower()
+    role = data.get('role')
+    if '@' not in email or len(email) > 120:
+        return jsonify({"msg": "Correo inválido"}), 400
+    if role not in ("asistente", "veterinario"):
+        return jsonify({"msg": "Rol inválido"}), 400
+
+    clinic_id = current_clinic_id()
+    # Solo se informa sobre la PROPIA clínica; nada sobre otras clínicas
+    ya_miembro = db.session.execute(
+        db.select(ClinicMembership.id).join(User)
+        .where(ClinicMembership.clinic_id == clinic_id, User.email == email)
+    ).first()
+    if ya_miembro:
+        return jsonify({"msg": "Esa persona ya es integrante de tu clínica"}), 409
+
+    token = secrets.token_urlsafe(32)
+    now = datetime.datetime.utcnow()
+    inv = db.session.execute(
+        db.select(ClinicInvitation).where(
+            ClinicInvitation.clinic_id == clinic_id,
+            ClinicInvitation.email == email,
+            ClinicInvitation.accepted_at.is_(None),
+        )
+    ).scalars().first()
+    if inv:  # reenviar: nuevo enlace y nueva vigencia (el anterior deja de servir)
+        inv.role = role
+        inv.created_at = now
+    else:
+        inv = ClinicInvitation(clinic_id=clinic_id, email=email, role=role, invited_by=int(get_jwt()['sub']))
+        db.session.add(inv)
+    inv.token_hash = hash_invite_token(token)
+    inv.expires_at = now + INVITE_TTL
+    db.session.commit()
+
+    clinic = db.session.get(Clinic, clinic_id)
+    rol_txt = "veterinario(a)" if role == "veterinario" else "asistente"
+    link = f"{current_app.config['FRONTEND_URL'].rstrip('/')}/invitacion?token={token}"
+    try:
+        send_email(
+            email,
+            f"Invitación de {clinic.nombre} - Sistema de Gestión Veterinaria",
+            f"Hola,\n\n{clinic.nombre} te invitó a unirte como {rol_txt}.\n\n"
+            f"Acepta la invitación aquí (válida por 7 días):\n{link}\n\n"
+            "Si ya tienes una cuenta, solo confirma con tu contraseña. Si no esperabas este correo, ignóralo.",
+        )
+    except Exception:
+        current_app.logger.exception("Error enviando invitación")
+        return jsonify({"msg": "No se pudo enviar el correo de invitación. Intenta de nuevo."}), 502
+
+    # Misma respuesta exista o no una cuenta con ese correo
+    return jsonify({"msg": f"Invitación enviada a {email}", "invitation": serialize_invitation(inv)}), 201
+
+@api.route('/invitations/<int:inv_id>', methods=['DELETE'])
+@role_required('administrador')
+def revoke_invitation(inv_id):
+    inv = db.session.get(ClinicInvitation, inv_id)
+    if not inv or inv.clinic_id != current_clinic_id() or inv.accepted_at:
+        return jsonify({"msg": "Invitación no encontrada"}), 404
+    db.session.delete(inv)
+    db.session.commit()
+    return jsonify({"msg": "Invitación cancelada"}), 200

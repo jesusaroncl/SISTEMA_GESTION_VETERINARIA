@@ -15,3 +15,6 @@ class Config:
     SMTP_USER = os.environ.get('SMTP_USER')
     SMTP_PASSWORD = os.environ.get('SMTP_PASSWORD')
     SMTP_FROM = os.environ.get('SMTP_FROM') or os.environ.get('SMTP_USER')
+
+    # URL pública del frontend (enlaces de invitación en los correos)
+    FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:3000')

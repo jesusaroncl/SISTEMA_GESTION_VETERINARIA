@@ -8,6 +8,8 @@ import { DogsView } from "@/components/dogs-view" // Refactorizado
 import { Button } from "@/components/ui/button"
 import { LogOut, Home } from "lucide-react"
 import type { Owner } from "@/lib/types"
+import { ClinicSwitcher } from "@/components/clinic-switcher"
+import { clearSession } from "@/lib/session"
 
 export default function AsistentePage() {
   const router = useRouter()
@@ -36,9 +38,7 @@ export default function AsistentePage() {
 
   const handleLogout = () => {
     if (!confirmDiscard()) return
-    localStorage.removeItem("userRole")
-    localStorage.removeItem("username")
-    localStorage.removeItem("access_token") // Limpiar token
+    clearSession()
     router.push("/")
   }
 
@@ -80,6 +80,7 @@ export default function AsistentePage() {
             <h1 className="text-2xl font-bold text-white">PROYECTO</h1>
           </div>
           <div className="flex items-center gap-4">
+            <ClinicSwitcher beforeSwitch={confirmDiscard} />
             <Button
               variant="ghost"
               onClick={handleGoHome}
