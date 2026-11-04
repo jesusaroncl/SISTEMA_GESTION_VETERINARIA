@@ -1,7 +1,7 @@
 services:
   db:
     image: postgres:15-alpine
-    container_name: veterinaria_db_container
+    container_name: veterinaria_db
     restart: always
     environment:
       # Variables hardcodeadas (como solicitaste)

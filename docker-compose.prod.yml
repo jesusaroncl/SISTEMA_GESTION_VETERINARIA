@@ -5,11 +5,15 @@
 #   - Frontend  →  http://IP_DEL_SERVIDOR:7000
 #   - Backend   →  http://IP_DEL_SERVIDOR:9000
 #
+# Contenedores: veterinaria_prod_db, veterinaria_prod_backend, veterinaria_prod_frontend
+# (en local, docker-compose.yml usa veterinaria_db, veterinaria_backend, veterinaria_frontend)
+#
 # NEXT_PUBLIC_API_BASE_URL debe ser la URL pública HTTPS del backend (ver .env.example)
 
 services:
   db:
     image: postgres:15-alpine
+    container_name: veterinaria_prod_db
     restart: always
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
@@ -27,6 +31,7 @@ services:
   backend:
     build:
       context: ./backend
+    container_name: veterinaria_prod_backend
     restart: always
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
@@ -49,6 +54,7 @@ services:
         condition: service_healthy
 
   frontend:
+    container_name: veterinaria_prod_frontend
     build:
       context: ./frontend
       args:
