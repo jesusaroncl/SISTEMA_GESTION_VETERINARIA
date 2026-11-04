@@ -85,7 +85,7 @@ def serialize_owner(o: Owner):
 
 # --- Validaciones de formularios (observaciones QA) ---
 MAX_NOMBRE = 50
-FECHA_MIN_PROPIETARIO = datetime.date(1900, 1, 1)
+FECHA_MIN_PROPIETARIO = datetime.date(2000, 1, 1)
 FECHA_MIN_MASCOTA = datetime.date(2000, 1, 1)
 TIPOS_DOCUMENTO = {"DNI", "Carnet de extranjería", "Pasaporte"}
 

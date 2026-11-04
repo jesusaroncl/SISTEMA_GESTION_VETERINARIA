@@ -13,7 +13,7 @@ import { todayISO } from "@/lib/date-utils"
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL
 const MAX_NOMBRE = 50
-const FECHA_MIN = "1900-01-01"
+const FECHA_MIN = "2000-01-01"
 
 /** Validaciones previas al envío; el backend repite las mismas reglas. */
 function validarPropietario(data: { nombres: string; apellidos: string; tipoDocumento: string; dni: string; celular: string; fechaNacimiento: string }): string | null {
@@ -25,7 +25,7 @@ function validarPropietario(data: { nombres: string; apellidos: string; tipoDocu
     return `Número de documento: el ${data.tipoDocumento} debe tener entre 9 y 12 dígitos`
   if (data.celular && !/^\d{9}$/.test(data.celular)) return "Celular: debe tener 9 dígitos numéricos"
   if (data.fechaNacimiento) {
-    if (data.fechaNacimiento < FECHA_MIN) return "Fecha de nacimiento: no puede ser anterior al 01/01/1900"
+    if (data.fechaNacimiento < FECHA_MIN) return "Fecha de nacimiento: no puede ser anterior al 01/01/2000"
     if (data.fechaNacimiento > todayISO()) return "Fecha de nacimiento: no puede ser una fecha futura"
   }
   return null
