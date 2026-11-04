@@ -1,8 +1,10 @@
 """
 Script de datos de muestra — Sistema de Gestión Veterinaria
-Uso:
-  docker cp seed_data.py veterinaria_backend:/usr/src/app/seed_data.py
-  docker exec veterinaria_backend python3 seed_data.py
+Uso (ejecutar DESPUÉS de seed_users.py, que crea la Clínica Demo):
+  docker exec veterinaria_backend python3 seed_data.py        # local
+  docker exec veterinaria_prod_backend python3 seed_data.py   # producción
+
+Carga propietarios, perros y evaluaciones en la Clínica Demo (RUC 20123456789).
 """
 import datetime, uuid, sys
 from app import create_app, db
@@ -135,16 +137,16 @@ evals_data = evals_historicas + evals_recientes
 
 def seed():
     with app.app_context():
-        if db.session.execute(db.select(Owner)).scalars().first():
-            print("Ya existen propietarios. Saltando seed.")
-            sys.exit(0)
-
-        clinic = db.session.execute(db.select(Clinic)).scalars().first()
+        clinic = db.session.execute(db.select(Clinic).filter_by(ruc="20123456789")).scalar_one_or_none()
         if not clinic:
             clinic = Clinic(nombre="Clínica Demo", ruc="20123456789")
             db.session.add(clinic)
             db.session.flush()
-            print("Clínica demo creada (RUC 20123456789). Registra usuarios desde la app.")
+            print("Clínica Demo creada (RUC 20123456789). Ejecuta seed_users.py para tener usuarios.")
+
+        if db.session.execute(db.select(Owner).filter_by(clinic_id=clinic.id)).scalars().first():
+            print("La Clínica Demo ya tiene propietarios. Saltando seed.")
+            sys.exit(0)
 
         print("Insertando propietarios...")
         owner_objects = []
