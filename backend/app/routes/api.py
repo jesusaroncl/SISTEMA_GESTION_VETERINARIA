@@ -59,6 +59,91 @@ def serialize_owner(o: Owner):
     }
 
 
+# --- Validaciones de formularios (observaciones QA) ---
+MAX_NOMBRE = 50
+FECHA_MIN_PROPIETARIO = datetime.date(1900, 1, 1)
+FECHA_MIN_MASCOTA = datetime.date(2000, 1, 1)
+TIPOS_DOCUMENTO = {"DNI", "Carnet de extranjería", "Pasaporte"}
+
+class ValidacionError(Exception):
+    def __init__(self, msg, status=400):
+        super().__init__(msg)
+        self.msg = msg
+        self.status = status
+
+def _parse_fecha(valor, etiqueta, minimo):
+    """Solo acepta fechas entre `minimo` y hoy."""
+    try:
+        fecha = datetime.datetime.strptime(valor, '%Y-%m-%d').date()
+    except (TypeError, ValueError):
+        raise ValidacionError(f"{etiqueta}: formato de fecha inválido")
+    if fecha < minimo:
+        raise ValidacionError(f"{etiqueta}: no puede ser anterior al {minimo.strftime('%d/%m/%Y')}")
+    if fecha > datetime.date.today():
+        raise ValidacionError(f"{etiqueta}: no puede ser una fecha futura")
+    return fecha
+
+def _validar_texto(valor, etiqueta):
+    valor = (valor or "").strip()
+    if not valor:
+        raise ValidacionError(f"{etiqueta} es obligatorio")
+    if len(valor) > MAX_NOMBRE:
+        raise ValidacionError(f"{etiqueta} no puede superar {MAX_NOMBRE} caracteres")
+    return valor
+
+def _validar_documento(tipo, numero):
+    if tipo not in TIPOS_DOCUMENTO:
+        raise ValidacionError("Tipo de documento inválido")
+    if not numero.isdigit():
+        raise ValidacionError("Número de documento: solo se permiten números")
+    if tipo == "DNI" and len(numero) != 8:
+        raise ValidacionError("Número de documento: el DNI debe tener 8 dígitos")
+    if tipo != "DNI" and not 9 <= len(numero) <= 12:
+        raise ValidacionError(f"Número de documento: el {tipo} debe tener entre 9 y 12 dígitos")
+
+def _validar_owner(data, excluir_id=None):
+    """Valida y normaliza los datos de un propietario; devuelve los campos del modelo."""
+    nombres = _validar_texto(data.get('nombres'), "Nombres")
+    apellidos = _validar_texto(data.get('apellidos'), "Apellidos")
+    tipo = data.get('tipoDocumento')
+    dni = (data.get('dni') or "").strip()
+    _validar_documento(tipo, dni)
+    celular = (data.get('celular') or "").strip() or None
+    if celular and not (celular.isdigit() and len(celular) == 9):
+        raise ValidacionError("Celular: debe tener 9 dígitos numéricos")
+    correo = (data.get('correo') or "").strip()
+    if not correo:
+        raise ValidacionError("Correo es obligatorio")
+    fecha = None
+    if data.get('fechaNacimiento'):
+        fecha = _parse_fecha(data['fechaNacimiento'], "Fecha de nacimiento", FECHA_MIN_PROPIETARIO)
+
+    # Duplicados dentro de la clínica: se indica qué campo corregir
+    base = db.select(Owner.id).where(Owner.clinic_id == current_clinic_id())
+    if excluir_id:
+        base = base.where(Owner.id != excluir_id)
+    if db.session.execute(base.where(Owner.dni == dni)).first():
+        raise ValidacionError(f"Número de documento: {dni} ya está registrado para otro propietario", 409)
+    if db.session.execute(base.where(db.func.lower(Owner.correo) == correo.lower())).first():
+        raise ValidacionError(f"Correo: {correo} ya está registrado para otro propietario", 409)
+
+    return {
+        "nombres": nombres, "apellidos": apellidos, "tipo_documento": tipo, "dni": dni,
+        "celular": celular, "correo": correo, "fechaNacimiento": fecha,
+    }
+
+def _validar_dog(data, owner_id, excluir_id=None):
+    """Valida nombre y fecha de un perro; un propietario no puede repetir mascota."""
+    nombre = _validar_texto(data.get('nombre'), "Nombre")
+    fecha = _parse_fecha(data.get('fechaNacimiento'), "Fecha de nacimiento", FECHA_MIN_MASCOTA)
+    dup = db.select(Dog.id).where(Dog.owner_id == owner_id, db.func.lower(Dog.nombre) == nombre.lower())
+    if excluir_id:
+        dup = dup.where(Dog.id != excluir_id)
+    if db.session.execute(dup).first():
+        raise ValidacionError(f"Nombre: el propietario ya tiene una mascota llamada {nombre}", 409)
+    return {"nombre": nombre, "fechaNacimiento": fecha}
+
+
 # ===================================================
 # --- Ruta para Ubigeo ---
 # ===================================================
@@ -98,18 +183,17 @@ def create_owner():
     if not all(k in data for k in ["nombres", "apellidos", "tipoDocumento", "dni", "correo"]):
         return jsonify({"msg": "Faltan campos requeridos"}), 400
 
+    try:
+        campos = _validar_owner(data)
+    except ValidacionError as e:
+        return jsonify({"msg": e.msg}), e.status
+
     new_owner = Owner(
         clinic_id=current_clinic_id(),
         # id se genera por default en el modelo
-        nombres=data['nombres'],
-        apellidos=data['apellidos'],
-        tipo_documento=data['tipoDocumento'],
-        dni=data['dni'],
-        celular=data.get('celular'),
-        correo=data['correo'],
+        **campos,
         direccion=data.get('direccion'),
         sexo=data.get('sexo'),
-        fechaNacimiento=datetime.datetime.strptime(data['fechaNacimiento'], '%Y-%m-%d').date() if data.get('fechaNacimiento') else None,
         ubigeo=data.get('ubigeo'),
         departamento=data.get('departamento'),
         provincia=data.get('provincia'),
@@ -150,25 +234,29 @@ def update_owner(owner_id):
         return jsonify({"msg": "Propietario no encontrado"}), 404
     
     data = request.get_json()
-    owner.nombres = data.get('nombres', owner.nombres)
-    owner.apellidos = data.get('apellidos', owner.apellidos)
-    owner.tipo_documento = data.get('tipoDocumento', owner.tipo_documento)
-    owner.dni = data.get('dni', owner.dni)
-    owner.celular = data.get('celular', owner.celular)
-    owner.correo = data.get('correo', owner.correo)
+    # Se valida el estado final (lo enviado sobre lo existente)
+    merged = {
+        "nombres": data.get('nombres', owner.nombres),
+        "apellidos": data.get('apellidos', owner.apellidos),
+        "tipoDocumento": data.get('tipoDocumento', owner.tipo_documento),
+        "dni": data.get('dni', owner.dni),
+        "celular": data.get('celular', owner.celular),
+        "correo": data.get('correo', owner.correo),
+        "fechaNacimiento": data.get('fechaNacimiento', owner.fechaNacimiento.isoformat() if owner.fechaNacimiento else None),
+    }
+    try:
+        campos = _validar_owner(merged, excluir_id=owner.id)
+    except ValidacionError as e:
+        return jsonify({"msg": e.msg}), e.status
+
+    for campo, valor in campos.items():
+        setattr(owner, campo, valor)
     owner.direccion = data.get('direccion', owner.direccion)
     owner.sexo = data.get('sexo', owner.sexo)
     owner.ubigeo = data.get('ubigeo', owner.ubigeo)
     owner.departamento = data.get('departamento', owner.departamento)
     owner.provincia = data.get('provincia', owner.provincia)
     owner.distrito = data.get('distrito', owner.distrito)
-    
-    fecha_str = data.get('fechaNacimiento')
-    if fecha_str is not None:
-        try:
-            owner.fechaNacimiento = datetime.datetime.strptime(fecha_str, '%Y-%m-%d').date()
-        except ValueError:
-            owner.fechaNacimiento = None # O manejar error
 
     try:
         db.session.commit()
@@ -222,14 +310,18 @@ def create_dog(owner_id):
     if not all(k in data for k in ["nombre", "raza", "fechaNacimiento", "sexo"]):
         return jsonify({"msg": "Faltan campos requeridos para el perro"}), 400
 
+    try:
+        campos = _validar_dog(data, owner_id)
+    except ValidacionError as e:
+        return jsonify({"msg": e.msg}), e.status
+
     new_dog = Dog(
         # id se genera por default
-        especie=data.get('especie', 'Canino'),
-        nombre=data['nombre'],
+        especie='Canino',  # el sistema solo atiende caninos
+        **campos,
         raza=data['raza'],
         sexo=data['sexo'],
         estado=data.get('estado', 'Vivo'),
-        fechaNacimiento=datetime.datetime.strptime(data['fechaNacimiento'], '%Y-%m-%d').date() if data.get('fechaNacimiento') else None,
         owner_id=owner_id
     )
 
@@ -249,15 +341,21 @@ def update_dog(dog_id):
         return jsonify({"msg": "Perro no encontrado"}), 404
     
     data = request.get_json()
-    
-    dog.especie = data.get('especie', dog.especie)
-    dog.nombre = data.get('nombre', dog.nombre)
+    merged = {
+        "nombre": data.get('nombre', dog.nombre),
+        "fechaNacimiento": data.get('fechaNacimiento') or (dog.fechaNacimiento.isoformat() if dog.fechaNacimiento else None),
+    }
+    try:
+        campos = _validar_dog(merged, dog.owner_id, excluir_id=dog.id)
+    except ValidacionError as e:
+        return jsonify({"msg": e.msg}), e.status
+
+    dog.especie = 'Canino'
+    dog.nombre = campos["nombre"]
+    dog.fechaNacimiento = campos["fechaNacimiento"]
     dog.raza = data.get('raza', dog.raza)
     dog.sexo = data.get('sexo', dog.sexo)
     dog.estado = data.get('estado', dog.estado)
-    fecha_str = data.get('fechaNacimiento')
-    if fecha_str:
-        dog.fechaNacimiento = datetime.datetime.strptime(fecha_str, '%Y-%m-%d').date()
 
     try:
         db.session.commit()

@@ -15,6 +15,12 @@ export default function AsistentePage() {
   const [selectedOwner, setSelectedOwner] = useState<Owner | null>(null)
   const [editingOwner, setEditingOwner] = useState<Owner | null>(null)
   const [username, setUsername] = useState("")
+  const [dogFormOpen, setDogFormOpen] = useState(false)
+
+  // Igual que "Cancelar": si hay un formulario abierto, pedir confirmación antes de salir
+  const confirmDiscard = () =>
+    !(view === "owner-form" || (view === "dogs" && dogFormOpen)) ||
+    confirm("¿Estás seguro que deseas cancelar? Se perderán los datos ingresados.")
 
   useEffect(() => {
     const userRole = localStorage.getItem("userRole")
@@ -29,6 +35,7 @@ export default function AsistentePage() {
   }, [router])
 
   const handleLogout = () => {
+    if (!confirmDiscard()) return
     localStorage.removeItem("userRole")
     localStorage.removeItem("username")
     localStorage.removeItem("access_token") // Limpiar token
@@ -36,8 +43,10 @@ export default function AsistentePage() {
   }
 
   const handleGoHome = () => {
+    if (!confirmDiscard()) return
     setSelectedOwner(null)
     setEditingOwner(null)
+    setDogFormOpen(false)
     setView("owners")
   }
 
@@ -59,6 +68,7 @@ export default function AsistentePage() {
   const handleBackToOwners = () => {
     setSelectedOwner(null)
     setEditingOwner(null)
+    setDogFormOpen(false)
     setView("owners")
   }
 
@@ -110,8 +120,9 @@ export default function AsistentePage() {
 
         {view === "dogs" && selectedOwner && (
           <DogsView 
-            owner={selectedOwner} 
-            onBack={handleBackToOwners} 
+            owner={selectedOwner}
+            onBack={handleBackToOwners}
+            onFormOpenChange={setDogFormOpen}
           />
         )}
       </div>

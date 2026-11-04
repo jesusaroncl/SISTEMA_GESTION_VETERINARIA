@@ -24,6 +24,14 @@ export function calculateAgeAtDate(
   return age < 0 ? 0 : age
 }
 
+/** Fecha local de hoy en formato "YYYY-MM-DD" (para el atributo max de inputs date). */
+export function todayISO(): string {
+  const d = new Date()
+  const month = String(d.getMonth() + 1).padStart(2, "0")
+  const day = String(d.getDate()).padStart(2, "0")
+  return `${d.getFullYear()}-${month}-${day}`
+}
+
 export function formatDateDDMMYYYY(dateStr: string): string {
   const d = parseLocalDate(dateStr)
   const day = String(d.getDate()).padStart(2, "0")

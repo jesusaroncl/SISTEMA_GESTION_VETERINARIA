@@ -9,8 +9,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ArrowLeft, Save } from "lucide-react"
 import type { Dog } from "@/lib/types"
+import { todayISO } from "@/lib/date-utils"
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL
+const MAX_NOMBRE = 50
+const FECHA_MIN = "2000-01-01"
 
 type DogFormProps = {
   dog: Dog | null
@@ -35,7 +38,7 @@ export function DogForm({ dog, ownerId, ownerName, onBack, onSave }: DogFormProp
   }, [])
 
   const [formData, setFormData] = useState({
-    especie: dog?.especie || "Canino", // Default 'Canino'
+    especie: "Canino", // El sistema solo atiende caninos
     nombre: dog?.nombre || "",
     raza: dog?.raza || "",
     fechaNacimiento: dog?.fechaNacimiento ? dog.fechaNacimiento.split("T")[0] : "",
@@ -49,6 +52,22 @@ export function DogForm({ dog, ownerId, ownerName, onBack, onSave }: DogFormProp
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!formData.nombre.trim()) {
+      alert("Nombre es obligatorio")
+      return
+    }
+    if (!formData.raza) {
+      alert("Seleccione una raza")
+      return
+    }
+    if (formData.fechaNacimiento < FECHA_MIN) {
+      alert("Fecha de nacimiento: no puede ser anterior al 01/01/2000")
+      return
+    }
+    if (formData.fechaNacimiento > todayISO()) {
+      alert("Fecha de nacimiento: no puede ser una fecha futura")
+      return
+    }
     if (!confirm("¿Estás seguro que deseas guardar?")) return
 
     const token = getAuthToken()
@@ -108,18 +127,9 @@ export function DogForm({ dog, ownerId, ownerName, onBack, onSave }: DogFormProp
 
             <div className="space-y-2">
               <Label htmlFor="especie">Especie *</Label>
-              <Select value={formData.especie} onValueChange={(value) => handleChange("especie", value)}>
-                <SelectTrigger id="especie">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Canino">Canino</SelectItem>
-                  <SelectItem value="Felino">Felino</SelectItem>
-                  {/* Puedes añadir más especies si lo deseas */}
-                </SelectContent>
-              </Select>
+              <Input id="especie" value="Canino" readOnly className="bg-gray-100 cursor-not-allowed" />
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="nombre">Nombre *</Label>
               <Input
@@ -127,6 +137,7 @@ export function DogForm({ dog, ownerId, ownerName, onBack, onSave }: DogFormProp
                 value={formData.nombre}
                 onChange={(e) => handleChange("nombre", e.target.value)}
                 required
+                maxLength={MAX_NOMBRE}
                 placeholder="Ingrese el nombre del perro"
               />
             </div>
@@ -155,6 +166,8 @@ export function DogForm({ dog, ownerId, ownerName, onBack, onSave }: DogFormProp
                 value={formData.fechaNacimiento}
                 onChange={(e) => handleChange("fechaNacimiento", e.target.value)}
                 required
+                min={FECHA_MIN}
+                max={todayISO()}
               />
             </div>
 

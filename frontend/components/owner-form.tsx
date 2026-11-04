@@ -9,8 +9,27 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ArrowLeft, Save } from "lucide-react"
 import type { Owner } from "@/lib/types"
+import { todayISO } from "@/lib/date-utils"
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL
+const MAX_NOMBRE = 50
+const FECHA_MIN = "1900-01-01"
+
+/** Validaciones previas al envío; el backend repite las mismas reglas. */
+function validarPropietario(data: { nombres: string; apellidos: string; tipoDocumento: string; dni: string; celular: string; fechaNacimiento: string }): string | null {
+  if (!data.nombres.trim()) return "Nombres es obligatorio"
+  if (!data.apellidos.trim()) return "Apellidos es obligatorio"
+  if (!/^\d+$/.test(data.dni)) return "Número de documento: solo se permiten números"
+  if (data.tipoDocumento === "DNI" && data.dni.length !== 8) return "Número de documento: el DNI debe tener 8 dígitos"
+  if (data.tipoDocumento !== "DNI" && (data.dni.length < 9 || data.dni.length > 12))
+    return `Número de documento: el ${data.tipoDocumento} debe tener entre 9 y 12 dígitos`
+  if (data.celular && !/^\d{9}$/.test(data.celular)) return "Celular: debe tener 9 dígitos numéricos"
+  if (data.fechaNacimiento) {
+    if (data.fechaNacimiento < FECHA_MIN) return "Fecha de nacimiento: no puede ser anterior al 01/01/1900"
+    if (data.fechaNacimiento > todayISO()) return "Fecha de nacimiento: no puede ser una fecha futura"
+  }
+  return null
+}
 
 type OwnerFormProps = {
   owner: Owner | null
@@ -91,6 +110,11 @@ export function OwnerForm({ owner, onBack, onSave }: OwnerFormProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    const errorValidacion = validarPropietario(formData)
+    if (errorValidacion) {
+      alert(errorValidacion)
+      return
+    }
     if (!confirm("¿Estás seguro que deseas guardar?")) return
 
     const token = getAuthToken()
@@ -156,6 +180,7 @@ export function OwnerForm({ owner, onBack, onSave }: OwnerFormProps) {
                 value={formData.nombres}
                 onChange={(e) => handleChange("nombres", e.target.value)}
                 required
+                maxLength={MAX_NOMBRE}
                 placeholder="Ingrese los nombres"
                 className="bg-white"
               />
@@ -168,6 +193,7 @@ export function OwnerForm({ owner, onBack, onSave }: OwnerFormProps) {
                 value={formData.apellidos}
                 onChange={(e) => handleChange("apellidos", e.target.value)}
                 required
+                maxLength={MAX_NOMBRE}
                 placeholder="Ingrese los apellidos"
                 className="bg-white"
               />
@@ -198,8 +224,9 @@ export function OwnerForm({ owner, onBack, onSave }: OwnerFormProps) {
               <Input
                 id="dni"
                 value={formData.dni}
-                onChange={(e) => handleChange("dni", e.target.value)}
+                onChange={(e) => handleChange("dni", e.target.value.replace(/\D/g, ""))}
                 required
+                inputMode="numeric"
                 maxLength={maxLengthDoc}
                 placeholder={formData.tipoDocumento === "DNI" ? "12345678" : "Número de documento"}
                 className="bg-white"
@@ -211,7 +238,8 @@ export function OwnerForm({ owner, onBack, onSave }: OwnerFormProps) {
               <Input
                 id="celular"
                 value={formData.celular}
-                onChange={(e) => handleChange("celular", e.target.value)}
+                onChange={(e) => handleChange("celular", e.target.value.replace(/\D/g, ""))}
+                inputMode="numeric"
                 maxLength={9}
                 placeholder="987654321"
                 className="bg-white"
@@ -238,6 +266,8 @@ export function OwnerForm({ owner, onBack, onSave }: OwnerFormProps) {
                 type="date"
                 value={formData.fechaNacimiento}
                 onChange={(e) => handleChange("fechaNacimiento", e.target.value)}
+                min={FECHA_MIN}
+                max={todayISO()}
                 className="bg-white"
               />
             </div>

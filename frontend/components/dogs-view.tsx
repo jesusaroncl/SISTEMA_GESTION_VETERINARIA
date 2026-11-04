@@ -11,25 +11,32 @@ import type { Owner, Dog } from "@/lib/types"
 type DogsViewProps = {
   owner: Owner
   onBack: () => void
+  /** Avisa al padre si el formulario de perro está abierto (para confirmar al salir) */
+  onFormOpenChange?: (open: boolean) => void
 }
 
-export function DogsView({ owner, onBack }: DogsViewProps) {
+export function DogsView({ owner, onBack, onFormOpenChange }: DogsViewProps) {
   const [view, setView] = useState<"table" | "form">("table")
   const [editingDog, setEditingDog] = useState<Dog | null>(null)
 
+  const changeView = (next: "table" | "form") => {
+    setView(next)
+    onFormOpenChange?.(next === "form")
+  }
+
   const handleNewDog = () => {
     setEditingDog(null)
-    setView("form")
+    changeView("form")
   }
 
   const handleEditDog = (dog: Dog) => {
     setEditingDog(dog)
-    setView("form")
+    changeView("form")
   }
 
   const handleBackToTable = () => {
     setEditingDog(null)
-    setView("table")
+    changeView("table")
   }
 
   return (
