@@ -67,7 +67,7 @@ export function ClinicSwitcher({ beforeSwitch }: ClinicSwitcherProps) {
 
   if (clinics.length < 2) {
     return clinicName ? (
-      <span className="flex items-center gap-2 text-sm text-white/90">
+      <span className="flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-sm font-medium text-white">
         <Building2 className="h-4 w-4" />
         {clinicName}
       </span>
@@ -77,7 +77,7 @@ export function ClinicSwitcher({ beforeSwitch }: ClinicSwitcherProps) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" className="gap-2 text-white hover:bg-white/20 hover:text-white">
+        <Button variant="ghost" className="h-8 gap-2 rounded-full bg-white/15 px-3 text-sm font-medium text-white hover:bg-white/25 hover:text-white">
           <Building2 className="h-4 w-4" />
           {clinicName}
           <ChevronDown className="h-4 w-4" />
