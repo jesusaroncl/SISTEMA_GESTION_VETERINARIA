@@ -196,11 +196,11 @@ Los datos se conservan (están en volúmenes de Docker) y las migraciones nuevas
 | Script | Qué crea | Orden |
 |---|---|---|
 | `seed_users.py` | 2 clínicas (Clínica Demo y Clínica Norte) y 5 usuarios | **1º** |
-| `seed_data.py` | 7 propietarios, 15 perros y 58 evaluaciones en la Clínica Demo | **2º** |
+| `seed_data.py` | Clínica Demo (Lima): 30 propietarios, ~54 perros, ~150 evaluaciones. Clínica Norte (Trujillo): 15 propietarios, ~24 perros, ~76 evaluaciones. Fechas del último año relativas al día en que se ejecuta | **2º** |
 
 - Se pueden ejecutar **varias veces** sin duplicar nada.
 - `seed_users.py` **nunca cambia la contraseña** de un usuario que ya existe.
-- `seed_data.py` no hace nada si la Clínica Demo ya tiene propietarios.
+- `seed_data.py` se salta cada clínica que ya tenga propietarios (no duplica nada).
 
 ## 🔑 Usuarios de prueba
 
