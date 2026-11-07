@@ -124,12 +124,15 @@ export default function AdminPage() {
     <main className="min-h-screen bg-background">
       <div className="border-b bg-[#1793a5] shadow-lg">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-white">PROYECTO</h1>
-            <p className="text-sm text-white/80">Administración · {username}</p>
+          <div className="flex items-center gap-4">
+            <div>
+              <h1 className="text-2xl font-bold text-white">PROYECTO</h1>
+              <p className="text-sm text-white/80">Administración · {username}</p>
+            </div>
+            <div className="h-10 w-px bg-white/30" />
+            <ClinicSwitcher />
           </div>
           <div className="flex items-center gap-2">
-            <ClinicSwitcher />
             <Button variant="ghost" onClick={handleLogout} className="gap-2 text-white hover:bg-white/20 hover:text-white">
               <LogOut className="h-4 w-4" />
               Cerrar Sesión

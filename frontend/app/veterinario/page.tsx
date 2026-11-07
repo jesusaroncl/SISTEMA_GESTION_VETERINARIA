@@ -181,11 +181,12 @@ export default function VeterinarioPage() {
     <main className="min-h-screen bg-background">
       <div className="border-b bg-[#1793a5] shadow-lg">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-8">
+          <div className="flex items-center gap-4">
             <h1 className="text-2xl font-bold text-white">PROYECTO</h1>
-          </div>
-          <div className="flex items-center gap-1">
+            <div className="h-7 w-px bg-white/30" />
             <ClinicSwitcher />
+          </div>
+          <div className="flex items-center gap-2">
             <Button
               variant="ghost"
               onClick={handleGoHome}
