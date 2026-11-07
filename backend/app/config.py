@@ -19,4 +19,8 @@ class Config:
     SMTP_FROM = os.environ.get('SMTP_FROM') or os.environ.get('SMTP_USER')
 
     # URL pública del frontend (enlaces de invitación en los correos)
-    FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
+    FRONTEND_URL = (os.environ.get('FRONTEND_URL') or 'http://localhost:3000').rstrip('/')
+
+    # Orígenes que pueden llamar a la API desde el navegador: solo el frontend.
+    # En local (sin FRONTEND_URL) se aceptan localhost y 127.0.0.1 en el puerto 3000.
+    CORS_ORIGINS = [FRONTEND_URL] if os.environ.get('FRONTEND_URL') else ['http://localhost:3000', 'http://127.0.0.1:3000']

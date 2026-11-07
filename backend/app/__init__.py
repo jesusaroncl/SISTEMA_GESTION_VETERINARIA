@@ -14,7 +14,7 @@ def create_app():
     app = Flask(__name__)
     app.config.from_object('app.config.Config')
 
-    CORS(app) # Habilita CORS para el frontend
+    CORS(app, origins=app.config['CORS_ORIGINS']) # Solo el frontend puede llamar a la API
     db.init_app(app)
     bcrypt.init_app(app)
     jwt.init_app(app)
