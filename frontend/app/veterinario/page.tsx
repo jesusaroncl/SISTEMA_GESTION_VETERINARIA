@@ -12,6 +12,8 @@ import { EvaluationResult } from "@/components/evaluation-result"
 import { VetDashboard } from "@/components/vet-dashboard"
 import { Button } from "@/components/ui/button"
 import { LogOut, LayoutDashboard, Users } from "lucide-react"
+import { ClinicSwitcher } from "@/components/clinic-switcher"
+import { clearSession } from "@/lib/session"
 import type { Owner, Dog, Evaluation, EvaluationData, UploadedData } from "@/lib/types"
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL
@@ -44,9 +46,7 @@ export default function VeterinarioPage() {
   }
 
   const handleLogout = () => {
-    localStorage.removeItem("userRole")
-    localStorage.removeItem("username")
-    localStorage.removeItem("access_token")
+    clearSession()
     router.push("/")
   }
 
@@ -185,6 +185,7 @@ export default function VeterinarioPage() {
             <h1 className="text-2xl font-bold text-white">PROYECTO</h1>
           </div>
           <div className="flex items-center gap-1">
+            <ClinicSwitcher />
             <Button
               variant="ghost"
               onClick={handleGoHome}

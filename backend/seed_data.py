@@ -1,12 +1,14 @@
 """
 Script de datos de muestra — Sistema de Gestión Veterinaria
-Uso:
-  docker cp seed_data.py veterinaria_backend:/usr/src/app/seed_data.py
-  docker exec veterinaria_backend python3 seed_data.py
+Uso (ejecutar DESPUÉS de seed_users.py, que crea la Clínica Demo):
+  docker exec veterinaria_backend python3 seed_data.py        # local
+  docker exec veterinaria_prod_backend python3 seed_data.py   # producción
+
+Carga propietarios, perros y evaluaciones en la Clínica Demo (RUC 20123456789).
 """
 import datetime, uuid, sys
 from app import create_app, db
-from app.models import Owner, Dog, Evaluation
+from app.models import Owner, Dog, Evaluation, Clinic
 
 app = create_app()
 
@@ -21,13 +23,13 @@ PUNTOS = ["PV", "TV", "AV", "MV", "Phc"]
 
 # ── Propietarios ────────────────────────────────────────────
 owners_data = [
-    {"nombres": "Carlos Alberto",  "apellidos": "Quispe Mamani",    "dni": "41256789", "celular": "987654321", "correo": "carlos.quispe@gmail.com",      "direccion": "Av. Arequipa 1234",      "sexo": "Masculino", "fechaNacimiento": datetime.date(1985, 3, 12),  "departamento": "AREQUIPA",    "provincia": "AREQUIPA", "distrito": "AREQUIPA"},
-    {"nombres": "María Elena",     "apellidos": "Torres Vargas",    "dni": "52387641", "celular": "965432187", "correo": "maria.torres@hotmail.com",     "direccion": "Jr. Huancavelica 456",   "sexo": "Femenino",  "fechaNacimiento": datetime.date(1990, 7, 25),  "departamento": "LIMA",        "provincia": "LIMA",     "distrito": "MIRAFLORES"},
-    {"nombres": "Juan Pablo",      "apellidos": "Flores Huanca",    "dni": "63741852", "celular": "943218765", "correo": "juanpablo.flores@yahoo.com",   "direccion": "Calle Los Pinos 789",    "sexo": "Masculino", "fechaNacimiento": datetime.date(1978, 11, 8),  "departamento": "CUSCO",       "provincia": "CUSCO",    "distrito": "CUSCO"},
-    {"nombres": "Lucía Fernanda",  "apellidos": "Ramos Chávez",    "dni": "74852963", "celular": "921567843", "correo": "lucia.ramos@gmail.com",        "direccion": "Psje. Las Flores 321",   "sexo": "Femenino",  "fechaNacimiento": datetime.date(1995, 2, 14),  "departamento": "LA LIBERTAD", "provincia": "TRUJILLO", "distrito": "TRUJILLO"},
-    {"nombres": "Roberto Miguel",  "apellidos": "Sánchez Paredes",  "dni": "85963741", "celular": "912345678", "correo": "roberto.sanchez@gmail.com",    "direccion": "Av. Brasil 220",         "sexo": "Masculino", "fechaNacimiento": datetime.date(1982, 6, 3),   "departamento": "LIMA",        "provincia": "LIMA",     "distrito": "PUEBLO LIBRE"},
-    {"nombres": "Ana Sofía",       "apellidos": "Mendoza Ríos",    "dni": "96174852", "celular": "934567890", "correo": "ana.mendoza@outlook.com",      "direccion": "Jr. Tacna 500",          "sexo": "Femenino",  "fechaNacimiento": datetime.date(1988, 9, 20),  "departamento": "LIMA",        "provincia": "LIMA",     "distrito": "LIMA"},
-    {"nombres": "Pedro Alonso",    "apellidos": "Vega Castillo",    "dni": "10293847", "celular": "956781234", "correo": "pedro.vega@gmail.com",         "direccion": "Calle Real 88",          "sexo": "Masculino", "fechaNacimiento": datetime.date(1975, 4, 17),  "departamento": "JUNIN",       "provincia": "HUANCAYO", "distrito": "HUANCAYO"},
+    {"nombres": "Carlos Alberto",  "apellidos": "Quispe Mamani",    "dni": "41256789", "celular": "987654321", "correo": "carlos.quispe@gmail.com",      "direccion": "Av. Arequipa 1234",      "sexo": "Masculino", "fechaNacimiento": datetime.date(2001, 3, 12),  "departamento": "AREQUIPA",    "provincia": "AREQUIPA", "distrito": "AREQUIPA"},
+    {"nombres": "María Elena",     "apellidos": "Torres Vargas",    "dni": "52387641", "celular": "965432187", "correo": "maria.torres@hotmail.com",     "direccion": "Jr. Huancavelica 456",   "sexo": "Femenino",  "fechaNacimiento": datetime.date(2003, 7, 25),  "departamento": "LIMA",        "provincia": "LIMA",     "distrito": "MIRAFLORES"},
+    {"nombres": "Juan Pablo",      "apellidos": "Flores Huanca",    "dni": "63741852", "celular": "943218765", "correo": "juanpablo.flores@yahoo.com",   "direccion": "Calle Los Pinos 789",    "sexo": "Masculino", "fechaNacimiento": datetime.date(2000, 11, 8),  "departamento": "CUSCO",       "provincia": "CUSCO",    "distrito": "CUSCO"},
+    {"nombres": "Lucía Fernanda",  "apellidos": "Ramos Chávez",    "dni": "74852963", "celular": "921567843", "correo": "lucia.ramos@gmail.com",        "direccion": "Psje. Las Flores 321",   "sexo": "Femenino",  "fechaNacimiento": datetime.date(2006, 2, 14),  "departamento": "LA LIBERTAD", "provincia": "TRUJILLO", "distrito": "TRUJILLO"},
+    {"nombres": "Roberto Miguel",  "apellidos": "Sánchez Paredes",  "dni": "85963741", "celular": "912345678", "correo": "roberto.sanchez@gmail.com",    "direccion": "Av. Brasil 220",         "sexo": "Masculino", "fechaNacimiento": datetime.date(2002, 6, 3),   "departamento": "LIMA",        "provincia": "LIMA",     "distrito": "PUEBLO LIBRE"},
+    {"nombres": "Ana Sofía",       "apellidos": "Mendoza Ríos",    "dni": "96174852", "celular": "934567890", "correo": "ana.mendoza@outlook.com",      "direccion": "Jr. Tacna 500",          "sexo": "Femenino",  "fechaNacimiento": datetime.date(2004, 9, 20),  "departamento": "LIMA",        "provincia": "LIMA",     "distrito": "LIMA"},
+    {"nombres": "Pedro Alonso",    "apellidos": "Vega Castillo",    "dni": "10293847", "celular": "956781234", "correo": "pedro.vega@gmail.com",         "direccion": "Calle Real 88",          "sexo": "Masculino", "fechaNacimiento": datetime.date(2000, 4, 17),  "departamento": "JUNIN",       "provincia": "HUANCAYO", "distrito": "HUANCAYO"},
 ]
 
 # ── Perros (owner_idx referencia la lista owners_data) ──────
@@ -135,8 +137,15 @@ evals_data = evals_historicas + evals_recientes
 
 def seed():
     with app.app_context():
-        if db.session.execute(db.select(Owner)).scalars().first():
-            print("Ya existen propietarios. Saltando seed.")
+        clinic = db.session.execute(db.select(Clinic).filter_by(ruc="20123456789")).scalar_one_or_none()
+        if not clinic:
+            clinic = Clinic(nombre="Clínica Demo", ruc="20123456789")
+            db.session.add(clinic)
+            db.session.flush()
+            print("Clínica Demo creada (RUC 20123456789). Ejecuta seed_users.py para tener usuarios.")
+
+        if db.session.execute(db.select(Owner).filter_by(clinic_id=clinic.id)).scalars().first():
+            print("La Clínica Demo ya tiene propietarios. Saltando seed.")
             sys.exit(0)
 
         print("Insertando propietarios...")
@@ -144,6 +153,7 @@ def seed():
         for od in owners_data:
             o = Owner(
                 id=str(uuid.uuid4()),
+                clinic_id=clinic.id,
                 nombres=od["nombres"], apellidos=od["apellidos"],
                 tipo_documento="DNI", dni=od["dni"],
                 celular=od["celular"], correo=od["correo"],

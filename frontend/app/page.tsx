@@ -7,16 +7,18 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import Link from "next/link"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { AlertCircle, Stethoscope } from "lucide-react"
+import { AlertCircle, Building2, ChevronRight, Stethoscope } from "lucide-react"
+import { ROLE_LABELS, saveSession, type ClinicOption } from "@/lib/session"
 
 export default function LoginPage() {
   const router = useRouter()
-  const [role, setRole] = useState<"asistente" | "veterinario">("asistente")
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
+  // Si la cuenta pertenece a varias clínicas, se elige con cuál trabajar
+  const [clinicChoice, setClinicChoice] = useState<{ selectToken: string; clinics: ClinicOption[] } | null>(null)
 
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL
   const handleLogin = async (e: React.FormEvent) => {
@@ -40,22 +42,37 @@ export default function LoginPage() {
         return
       }
 
-      // Login exitoso: Guardar token, rol y username
-      if (typeof window !== "undefined") {
-        localStorage.setItem("access_token", data.access_token) // Guardar el token
-        localStorage.setItem("userRole", data.userRole)
-        localStorage.setItem("username", data.username)
+      if (data.selectClinic) {
+        setClinicChoice({ selectToken: data.selectToken, clinics: data.clinics })
+        return
       }
 
-      // Redirigir según el rol
-      if (data.userRole === "asistente") {
-        router.push("/asistente")
-      } else {
-        router.push("/veterinario")
-      }
+      // Login exitoso: guardar sesión y redirigir según el rol
+      router.push(saveSession(data))
     } catch (error) {
       setError("No se pudo conectar con el servidor de autenticación.")
       console.error("Login API Error:", error)
+    }
+  }
+
+  const handleSelectClinic = async (clinicId: number) => {
+    if (!clinicChoice) return
+    setError("")
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/select-clinic`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ selectToken: clinicChoice.selectToken, clinicId }),
+      })
+      const data = await response.json()
+      if (!response.ok) {
+        setClinicChoice(null)
+        setError(data.msg || "No se pudo seleccionar la clínica")
+        return
+      }
+      router.push(saveSession(data))
+    } catch {
+      setError("No se pudo conectar con el servidor de autenticación.")
     }
   }
 
@@ -72,6 +89,31 @@ export default function LoginPage() {
           <CardDescription className="text-base text-gray-600">Sistema de Gestión Veterinaria</CardDescription>
         </CardHeader>
         <CardContent>
+          {clinicChoice ? (
+            <div className="space-y-4">
+              <p className="text-center font-medium text-gray-700">¿Con qué clínica quieres trabajar?</p>
+              <div className="space-y-2">
+                {clinicChoice.clinics.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => handleSelectClinic(c.id)}
+                    className="w-full flex items-center gap-3 rounded-lg border border-gray-200 p-3 text-left hover:border-[#1793a5] hover:bg-[#d0e8ed]/40 transition-colors"
+                  >
+                    <Building2 className="h-5 w-5 text-[#1793a5]" />
+                    <div className="flex-1">
+                      <p className="font-medium">{c.nombre}</p>
+                      <p className="text-sm text-gray-500">{ROLE_LABELS[c.role]}</p>
+                    </div>
+                    <ChevronRight className="h-4 w-4 text-gray-400" />
+                  </button>
+                ))}
+              </div>
+              <Button variant="ghost" className="w-full" onClick={() => setClinicChoice(null)}>
+                Volver
+              </Button>
+            </div>
+          ) : (
           <form onSubmit={handleLogin} className="space-y-6">
             {error && (
               <Alert variant="destructive">
@@ -106,28 +148,24 @@ export default function LoginPage() {
               />
             </div>
 
-            <div className="space-y-3">
-              <Label>Tipo de Usuario</Label>
-              <RadioGroup value={role} onValueChange={(value) => setRole(value as "asistente" | "veterinario")}>
-                <div className="flex items-center space-x-2 p-3 border rounded-lg hover:bg-[#d0e8ed] transition-colors border-gray-300">
-                  <RadioGroupItem value="asistente" id="asistente" className="border-[#1793a5] text-[#1793a5]" />
-                  <Label htmlFor="asistente" className="flex-1 cursor-pointer font-normal">
-                    Asistente administrativo
-                  </Label>
-                </div>
-                <div className="flex items-center space-x-2 p-3 border rounded-lg hover:bg-[#d0e8ed] transition-colors border-gray-300">
-                  <RadioGroupItem value="veterinario" id="veterinario" className="border-[#1793a5] text-[#1793a5]" />
-                  <Label htmlFor="veterinario" className="flex-1 cursor-pointer font-normal">
-                    Veterinario
-                  </Label>
-                </div>
-              </RadioGroup>
+            <div className="text-right -mt-3">
+              <Link href="/forgot-password" className="text-sm text-[#1793a5] hover:underline">
+                ¿Olvidaste tu contraseña?
+              </Link>
             </div>
 
             <Button type="submit" className="w-full bg-[#1793a5] hover:bg-[#136d7a] text-white" size="lg">
               Iniciar Sesión
             </Button>
+
+            <p className="text-center text-sm text-gray-600">
+              ¿Tu clínica aún no está registrada?{" "}
+              <Link href="/registro" className="text-[#1793a5] font-medium hover:underline">
+                Registrar clínica
+              </Link>
+            </p>
           </form>
+          )}
         </CardContent>
       </Card>
     </main>

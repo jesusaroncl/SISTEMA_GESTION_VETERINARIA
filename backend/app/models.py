@@ -4,7 +4,7 @@ import datetime
 import uuid # Necesario para los IDs de Owner y Dog
 
 # --- Definiciones de Tipos de Roles ---
-ROLES = ["asistente", "veterinario"]
+ROLES = ["administrador", "asistente", "veterinario"]
 
 class Ubigeo(db.Model):
     __tablename__ = 'ubigeo'
@@ -18,12 +18,53 @@ class Breed(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     nombre = db.Column(db.String(100), nullable=False, unique=True)
 
+class Clinic(db.Model):
+    """Tenant: cada clínica tiene sus propios usuarios, propietarios, perros y evaluaciones."""
+    __tablename__ = 'clinics'
+    id = db.Column(db.Integer, primary_key=True)
+    nombre = db.Column(db.String(150), nullable=False)
+    ruc = db.Column(db.String(11), unique=True, nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.datetime.utcnow)
+
+    memberships = db.relationship('ClinicMembership', backref='clinic', lazy=True, cascade="all, delete-orphan")
+    owners = db.relationship('Owner', backref='clinic', lazy=True)
+
+class ClinicMembership(db.Model):
+    """Una persona (User) puede trabajar en varias clínicas, con un rol en cada una."""
+    __tablename__ = 'clinic_memberships'
+    __table_args__ = (db.UniqueConstraint('user_id', 'clinic_id', name='uq_membership_user_clinic'),)
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    clinic_id = db.Column(db.Integer, db.ForeignKey('clinics.id', ondelete='CASCADE'), nullable=False)
+    role = db.Column(db.Enum(*ROLES, name='user_roles', create_type=False), nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.datetime.utcnow)
+
+class ClinicInvitation(db.Model):
+    """Invitación por correo a unirse a una clínica. Solo se guarda el hash del token."""
+    __tablename__ = 'clinic_invitations'
+    id = db.Column(db.Integer, primary_key=True)
+    clinic_id = db.Column(db.Integer, db.ForeignKey('clinics.id', ondelete='CASCADE'), nullable=False)
+    email = db.Column(db.String(120), nullable=False)
+    role = db.Column(db.Enum(*ROLES, name='user_roles', create_type=False), nullable=False)
+    token_hash = db.Column(db.String(64), unique=True, nullable=False)
+    invited_by = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.datetime.utcnow)
+    expires_at = db.Column(db.DateTime, nullable=False)
+    accepted_at = db.Column(db.DateTime, nullable=True)
+
+    clinic = db.relationship('Clinic')
+
 class User(db.Model):
     __tablename__ = 'users'
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(64), unique=True, nullable=False)
+    email = db.Column(db.String(120), unique=True, nullable=True)
+    reset_code_hash = db.Column(db.String(64), nullable=True)
+    reset_code_expires = db.Column(db.DateTime, nullable=True)
+    reset_code_attempts = db.Column(db.Integer, nullable=False, default=0, server_default='0')
     password_hash = db.Column(db.String(128), nullable=False)
-    role = db.Column(db.Enum(*ROLES, name='user_roles'), nullable=False, default='asistente')
+
+    memberships = db.relationship('ClinicMembership', backref='user', lazy=True, cascade="all, delete-orphan")
 
     def set_password(self, password):
         self.password_hash = bcrypt.generate_password_hash(password).decode('utf-8')
@@ -31,23 +72,28 @@ class User(db.Model):
     def check_password(self, password):
         return bcrypt.check_password_hash(self.password_hash, password)
 
-    def get_jwt(self, expires_in=datetime.timedelta(hours=24)):
-        # Genera el token JWT, convirtiendo el ID (int) a string
+    def get_jwt(self, membership, expires_in=datetime.timedelta(hours=24)):
+        # El token queda ligado a UNA clínica activa y al rol que tiene en ella
         return create_access_token(
-            identity=str(self.id), 
-            expires_delta=expires_in, 
-            additional_claims={'role': self.role}
+            identity=str(self.id),
+            expires_delta=expires_in,
+            additional_claims={'role': membership.role, 'clinic_id': membership.clinic_id}
         )
 
 class Owner(db.Model):
     __tablename__ = 'owners'
+    __table_args__ = (
+        db.UniqueConstraint('clinic_id', 'dni', name='uq_owners_clinic_dni'),
+        db.UniqueConstraint('clinic_id', 'correo', name='uq_owners_clinic_correo'),
+    )
+    clinic_id = db.Column(db.Integer, db.ForeignKey('clinics.id'), nullable=False)
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     nombres = db.Column(db.String(100), nullable=False)
     apellidos = db.Column(db.String(100), nullable=False)
     tipo_documento = db.Column(db.String(50), nullable=False, default='DNI')
-    dni = db.Column(db.String(20), unique=True, nullable=False)
+    dni = db.Column(db.String(20), nullable=False)
     celular = db.Column(db.String(9))
-    correo = db.Column(db.String(120), unique=True, nullable=False)
+    correo = db.Column(db.String(120), nullable=False)
     direccion = db.Column(db.String(255))
     sexo = db.Column(db.String(20))
     fechaNacimiento = db.Column(db.Date)

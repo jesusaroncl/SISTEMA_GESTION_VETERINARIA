@@ -3,14 +3,38 @@ from flask import Blueprint, request, jsonify
 from app import db
 from app.config import Config
 from werkzeug.utils import secure_filename
-from app.models import Owner, Dog, User, Evaluation, Breed, Ubigeo
-from flask_jwt_extended import jwt_required, get_jwt
+from app.models import Owner, Dog, User, Evaluation, Breed, Ubigeo, Clinic, ClinicMembership, ClinicInvitation
+from app.emails import send_email
+from app.routes.auth import hash_invite_token
+from flask_jwt_extended import jwt_required, get_jwt, verify_jwt_in_request
 from sqlalchemy.exc import IntegrityError
 import uuid
+import secrets
 import datetime
+from flask import current_app
 from functools import wraps # Para el decorador role_required
 
 api = Blueprint('api', __name__)
+
+@api.before_request
+def verificar_membresia():
+    """El token indica clínica y rol; se confirma que la membresía sigue vigente
+    (si el administrador quita a alguien, pierde acceso de inmediato)."""
+    if request.method == 'OPTIONS':
+        return None
+    try:
+        verify_jwt_in_request(optional=True)
+    except Exception:
+        return None  # token inválido/expirado: lo resuelve el decorador de la ruta
+    claims = get_jwt()
+    if not claims:
+        return None
+    membership = db.session.execute(
+        db.select(ClinicMembership).filter_by(user_id=int(claims['sub']), clinic_id=claims.get('clinic_id'))
+    ).scalar_one_or_none()
+    if not membership or membership.role != claims.get('role'):
+        return jsonify({"msg": "Tu acceso a esta clínica cambió. Vuelve a iniciar sesión."}), 401
+    return None
 
 # --- Decorador de Roles ---
 def role_required(role):
@@ -24,6 +48,20 @@ def role_required(role):
             return fn(*args, **kwargs)
         return decorator
     return wrapper
+
+# --- Multitenant: todo se filtra por la clínica del JWT ---
+def current_clinic_id():
+    return get_jwt().get('clinic_id')
+
+def get_owner_scoped(owner_id):
+    """Devuelve el propietario solo si pertenece a la clínica del usuario."""
+    owner = db.session.get(Owner, owner_id)
+    return owner if owner and owner.clinic_id == current_clinic_id() else None
+
+def get_dog_scoped(dog_id):
+    """Devuelve el perro solo si su propietario pertenece a la clínica del usuario."""
+    dog = db.session.get(Dog, dog_id)
+    return dog if dog and dog.owner.clinic_id == current_clinic_id() else None
 
 # --- Serializador de Propietario ---
 def serialize_owner(o: Owner):
@@ -43,6 +81,91 @@ def serialize_owner(o: Owner):
         "provincia": o.provincia,
         "distrito": o.distrito,
     }
+
+
+# --- Validaciones de formularios (observaciones QA) ---
+MAX_NOMBRE = 50
+FECHA_MIN_PROPIETARIO = datetime.date(2000, 1, 1)
+FECHA_MIN_MASCOTA = datetime.date(2000, 1, 1)
+TIPOS_DOCUMENTO = {"DNI", "Carnet de extranjería", "Pasaporte"}
+
+class ValidacionError(Exception):
+    def __init__(self, msg, status=400):
+        super().__init__(msg)
+        self.msg = msg
+        self.status = status
+
+def _parse_fecha(valor, etiqueta, minimo):
+    """Solo acepta fechas entre `minimo` y hoy."""
+    try:
+        fecha = datetime.datetime.strptime(valor, '%Y-%m-%d').date()
+    except (TypeError, ValueError):
+        raise ValidacionError(f"{etiqueta}: formato de fecha inválido")
+    if fecha < minimo:
+        raise ValidacionError(f"{etiqueta}: no puede ser anterior al {minimo.strftime('%d/%m/%Y')}")
+    if fecha > datetime.date.today():
+        raise ValidacionError(f"{etiqueta}: no puede ser una fecha futura")
+    return fecha
+
+def _validar_texto(valor, etiqueta):
+    valor = (valor or "").strip()
+    if not valor:
+        raise ValidacionError(f"{etiqueta} es obligatorio")
+    if len(valor) > MAX_NOMBRE:
+        raise ValidacionError(f"{etiqueta} no puede superar {MAX_NOMBRE} caracteres")
+    return valor
+
+def _validar_documento(tipo, numero):
+    if tipo not in TIPOS_DOCUMENTO:
+        raise ValidacionError("Tipo de documento inválido")
+    if not numero.isdigit():
+        raise ValidacionError("Número de documento: solo se permiten números")
+    if tipo == "DNI" and len(numero) != 8:
+        raise ValidacionError("Número de documento: el DNI debe tener 8 dígitos")
+    if tipo != "DNI" and not 9 <= len(numero) <= 12:
+        raise ValidacionError(f"Número de documento: el {tipo} debe tener entre 9 y 12 dígitos")
+
+def _validar_owner(data, excluir_id=None):
+    """Valida y normaliza los datos de un propietario; devuelve los campos del modelo."""
+    nombres = _validar_texto(data.get('nombres'), "Nombres")
+    apellidos = _validar_texto(data.get('apellidos'), "Apellidos")
+    tipo = data.get('tipoDocumento')
+    dni = (data.get('dni') or "").strip()
+    _validar_documento(tipo, dni)
+    celular = (data.get('celular') or "").strip() or None
+    if celular and not (celular.isdigit() and len(celular) == 9):
+        raise ValidacionError("Celular: debe tener 9 dígitos numéricos")
+    correo = (data.get('correo') or "").strip()
+    if not correo:
+        raise ValidacionError("Correo es obligatorio")
+    fecha = None
+    if data.get('fechaNacimiento'):
+        fecha = _parse_fecha(data['fechaNacimiento'], "Fecha de nacimiento", FECHA_MIN_PROPIETARIO)
+
+    # Duplicados dentro de la clínica: se indica qué campo corregir
+    base = db.select(Owner.id).where(Owner.clinic_id == current_clinic_id())
+    if excluir_id:
+        base = base.where(Owner.id != excluir_id)
+    if db.session.execute(base.where(Owner.dni == dni)).first():
+        raise ValidacionError(f"Número de documento: {dni} ya está registrado para otro propietario", 409)
+    if db.session.execute(base.where(db.func.lower(Owner.correo) == correo.lower())).first():
+        raise ValidacionError(f"Correo: {correo} ya está registrado para otro propietario", 409)
+
+    return {
+        "nombres": nombres, "apellidos": apellidos, "tipo_documento": tipo, "dni": dni,
+        "celular": celular, "correo": correo, "fechaNacimiento": fecha,
+    }
+
+def _validar_dog(data, owner_id, excluir_id=None):
+    """Valida nombre y fecha de un perro; un propietario no puede repetir mascota."""
+    nombre = _validar_texto(data.get('nombre'), "Nombre")
+    fecha = _parse_fecha(data.get('fechaNacimiento'), "Fecha de nacimiento", FECHA_MIN_MASCOTA)
+    dup = db.select(Dog.id).where(Dog.owner_id == owner_id, db.func.lower(Dog.nombre) == nombre.lower())
+    if excluir_id:
+        dup = dup.where(Dog.id != excluir_id)
+    if db.session.execute(dup).first():
+        raise ValidacionError(f"Nombre: el propietario ya tiene una mascota llamada {nombre}", 409)
+    return {"nombre": nombre, "fechaNacimiento": fecha}
 
 
 # ===================================================
@@ -84,17 +207,17 @@ def create_owner():
     if not all(k in data for k in ["nombres", "apellidos", "tipoDocumento", "dni", "correo"]):
         return jsonify({"msg": "Faltan campos requeridos"}), 400
 
+    try:
+        campos = _validar_owner(data)
+    except ValidacionError as e:
+        return jsonify({"msg": e.msg}), e.status
+
     new_owner = Owner(
+        clinic_id=current_clinic_id(),
         # id se genera por default en el modelo
-        nombres=data['nombres'],
-        apellidos=data['apellidos'],
-        tipo_documento=data['tipoDocumento'],
-        dni=data['dni'],
-        celular=data.get('celular'),
-        correo=data['correo'],
+        **campos,
         direccion=data.get('direccion'),
         sexo=data.get('sexo'),
-        fechaNacimiento=datetime.datetime.strptime(data['fechaNacimiento'], '%Y-%m-%d').date() if data.get('fechaNacimiento') else None,
         ubigeo=data.get('ubigeo'),
         departamento=data.get('departamento'),
         provincia=data.get('provincia'),
@@ -115,14 +238,14 @@ def create_owner():
 @api.route('/owners', methods=['GET'])
 @jwt_required() 
 def get_owners():
-    owners = db.session.execute(db.select(Owner).order_by(Owner.apellidos)).scalars().all()
+    owners = db.session.execute(db.select(Owner).where(Owner.clinic_id == current_clinic_id()).order_by(Owner.apellidos)).scalars().all()
     owners_list = [serialize_owner(o) for o in owners]
     return jsonify(owners_list), 200
 
 @api.route('/owners/<string:owner_id>', methods=['GET'])
 @jwt_required()
 def get_owner(owner_id):
-    owner = db.session.get(Owner, owner_id)
+    owner = get_owner_scoped(owner_id)
     if not owner:
         return jsonify({"msg": "Propietario no encontrado"}), 404
     return jsonify(serialize_owner(owner)), 200
@@ -130,30 +253,34 @@ def get_owner(owner_id):
 @api.route('/owners/<string:owner_id>', methods=['PUT'])
 @role_required('asistente')
 def update_owner(owner_id):
-    owner = db.session.get(Owner, owner_id)
+    owner = get_owner_scoped(owner_id)
     if not owner:
         return jsonify({"msg": "Propietario no encontrado"}), 404
     
     data = request.get_json()
-    owner.nombres = data.get('nombres', owner.nombres)
-    owner.apellidos = data.get('apellidos', owner.apellidos)
-    owner.tipo_documento = data.get('tipoDocumento', owner.tipo_documento)
-    owner.dni = data.get('dni', owner.dni)
-    owner.celular = data.get('celular', owner.celular)
-    owner.correo = data.get('correo', owner.correo)
+    # Se valida el estado final (lo enviado sobre lo existente)
+    merged = {
+        "nombres": data.get('nombres', owner.nombres),
+        "apellidos": data.get('apellidos', owner.apellidos),
+        "tipoDocumento": data.get('tipoDocumento', owner.tipo_documento),
+        "dni": data.get('dni', owner.dni),
+        "celular": data.get('celular', owner.celular),
+        "correo": data.get('correo', owner.correo),
+        "fechaNacimiento": data.get('fechaNacimiento', owner.fechaNacimiento.isoformat() if owner.fechaNacimiento else None),
+    }
+    try:
+        campos = _validar_owner(merged, excluir_id=owner.id)
+    except ValidacionError as e:
+        return jsonify({"msg": e.msg}), e.status
+
+    for campo, valor in campos.items():
+        setattr(owner, campo, valor)
     owner.direccion = data.get('direccion', owner.direccion)
     owner.sexo = data.get('sexo', owner.sexo)
     owner.ubigeo = data.get('ubigeo', owner.ubigeo)
     owner.departamento = data.get('departamento', owner.departamento)
     owner.provincia = data.get('provincia', owner.provincia)
     owner.distrito = data.get('distrito', owner.distrito)
-    
-    fecha_str = data.get('fechaNacimiento')
-    if fecha_str is not None:
-        try:
-            owner.fechaNacimiento = datetime.datetime.strptime(fecha_str, '%Y-%m-%d').date()
-        except ValueError:
-            owner.fechaNacimiento = None # O manejar error
 
     try:
         db.session.commit()
@@ -168,7 +295,7 @@ def update_owner(owner_id):
 @api.route('/owners/<string:owner_id>', methods=['DELETE'])
 @role_required('asistente')
 def delete_owner(owner_id):
-    owner = db.session.get(Owner, owner_id)
+    owner = get_owner_scoped(owner_id)
     if not owner:
         return jsonify({"msg": "Propietario no encontrado"}), 404
 
@@ -190,7 +317,7 @@ def delete_owner(owner_id):
 @api.route('/owners/<string:owner_id>/dogs', methods=['GET'])
 @jwt_required()
 def get_dogs_for_owner(owner_id):
-    owner = db.session.get(Owner, owner_id)
+    owner = get_owner_scoped(owner_id)
     if not owner:
         return jsonify({"msg": "Propietario no encontrado"}), 404
     
@@ -200,21 +327,25 @@ def get_dogs_for_owner(owner_id):
 @api.route('/owners/<string:owner_id>/dogs', methods=['POST'])
 @role_required('asistente')
 def create_dog(owner_id):
-    if not db.session.get(Owner, owner_id):
+    if not get_owner_scoped(owner_id):
         return jsonify({"msg": "Propietario no encontrado"}), 404
         
     data = request.get_json()
     if not all(k in data for k in ["nombre", "raza", "fechaNacimiento", "sexo"]):
         return jsonify({"msg": "Faltan campos requeridos para el perro"}), 400
 
+    try:
+        campos = _validar_dog(data, owner_id)
+    except ValidacionError as e:
+        return jsonify({"msg": e.msg}), e.status
+
     new_dog = Dog(
         # id se genera por default
-        especie=data.get('especie', 'Canino'),
-        nombre=data['nombre'],
+        especie='Canino',  # el sistema solo atiende caninos
+        **campos,
         raza=data['raza'],
         sexo=data['sexo'],
         estado=data.get('estado', 'Vivo'),
-        fechaNacimiento=datetime.datetime.strptime(data['fechaNacimiento'], '%Y-%m-%d').date() if data.get('fechaNacimiento') else None,
         owner_id=owner_id
     )
 
@@ -229,20 +360,26 @@ def create_dog(owner_id):
 @api.route('/dogs/<string:dog_id>', methods=['PUT'])
 @role_required('asistente')
 def update_dog(dog_id):
-    dog = db.session.get(Dog, dog_id)
+    dog = get_dog_scoped(dog_id)
     if not dog:
         return jsonify({"msg": "Perro no encontrado"}), 404
     
     data = request.get_json()
-    
-    dog.especie = data.get('especie', dog.especie)
-    dog.nombre = data.get('nombre', dog.nombre)
+    merged = {
+        "nombre": data.get('nombre', dog.nombre),
+        "fechaNacimiento": data.get('fechaNacimiento') or (dog.fechaNacimiento.isoformat() if dog.fechaNacimiento else None),
+    }
+    try:
+        campos = _validar_dog(merged, dog.owner_id, excluir_id=dog.id)
+    except ValidacionError as e:
+        return jsonify({"msg": e.msg}), e.status
+
+    dog.especie = 'Canino'
+    dog.nombre = campos["nombre"]
+    dog.fechaNacimiento = campos["fechaNacimiento"]
     dog.raza = data.get('raza', dog.raza)
     dog.sexo = data.get('sexo', dog.sexo)
     dog.estado = data.get('estado', dog.estado)
-    fecha_str = data.get('fechaNacimiento')
-    if fecha_str:
-        dog.fechaNacimiento = datetime.datetime.strptime(fecha_str, '%Y-%m-%d').date()
 
     try:
         db.session.commit()
@@ -254,7 +391,7 @@ def update_dog(dog_id):
 @api.route('/dogs/<string:dog_id>', methods=['DELETE'])
 @role_required('asistente')
 def delete_dog(dog_id):
-    dog = db.session.get(Dog, dog_id)
+    dog = get_dog_scoped(dog_id)
     if not dog:
         return jsonify({"msg": "Perro no encontrado"}), 404
 
@@ -325,7 +462,7 @@ def _clasificacion_por_grado(grado_levine):
 @role_required('veterinario')
 def evaluate_dog_audio(dog_id):
     
-    dog = db.session.get(Dog, dog_id)
+    dog = get_dog_scoped(dog_id)
     if not dog:
         return jsonify({"msg": "Perro no encontrado"}), 404
 
@@ -396,7 +533,7 @@ def create_evaluation():
 
     if not dog_id or not eval_data:
         return jsonify({"msg": "Faltan datos (dogId o evaluationData)"}), 400
-    dog = db.session.get(Dog, dog_id)
+    dog = get_dog_scoped(dog_id)
     if not dog:
         return jsonify({"msg": "Perro no encontrado"}), 404
 
@@ -446,18 +583,25 @@ def get_dashboard():
     """Estadísticas completas para el dashboard del veterinario."""
     from sqlalchemy import func
 
+    cid = current_clinic_id()
+    # Evaluaciones que pertenecen a la clínica del usuario
+    eval_scope = Evaluation.dog_id.in_(
+        db.select(Dog.id).join(Owner, Dog.owner_id == Owner.id).where(Owner.clinic_id == cid)
+    )
+
     # --- Tarjetas de resumen ---
-    total_owners = db.session.execute(db.select(func.count(Owner.id))).scalar() or 0
-    total_dogs = db.session.execute(db.select(func.count(Dog.id))).scalar() or 0
-    total_evals = db.session.execute(db.select(func.count(Evaluation.id))).scalar() or 0
+    total_owners = db.session.execute(db.select(func.count(Owner.id)).where(Owner.clinic_id == cid)).scalar() or 0
+    total_dogs = db.session.execute(db.select(func.count(Dog.id)).join(Owner, Dog.owner_id == Owner.id).where(Owner.clinic_id == cid)).scalar() or 0
+    total_evals = db.session.execute(db.select(func.count(Evaluation.id)).where(eval_scope)).scalar() or 0
     total_con_soplo = db.session.execute(
-        db.select(func.count(Evaluation.id)).where(Evaluation.grado_levine != 'AUSENTE')
+        db.select(func.count(Evaluation.id)).where(eval_scope, Evaluation.grado_levine != 'AUSENTE')
     ).scalar() or 0
     tasa_hallazgo = round(total_con_soplo / total_evals * 100, 1) if total_evals > 0 else 0.0
 
     # --- Distribución por grado Levine ---
     grados_raw = db.session.execute(
         db.select(Evaluation.grado_levine, func.count(Evaluation.id))
+        .where(eval_scope)
         .group_by(Evaluation.grado_levine)
     ).all()
     distribucion_grados = {(g or "AUSENTE"): c for g, c in grados_raw}
@@ -465,7 +609,7 @@ def get_dashboard():
     # --- Tendencia semanal (últimas 10 semanas) ---
     hace_10_semanas = datetime.date.today() - datetime.timedelta(weeks=10)
     evals_recientes = db.session.execute(
-        db.select(Evaluation).where(Evaluation.fecha >= hace_10_semanas)
+        db.select(Evaluation).where(eval_scope, Evaluation.fecha >= hace_10_semanas)
         .order_by(Evaluation.fecha)
     ).scalars().all()
 
@@ -484,7 +628,7 @@ def get_dashboard():
 
     # --- Soplos por raza y rango de edad ---
     evals_con_soplo = db.session.execute(
-        db.select(Evaluation).where(Evaluation.grado_levine != 'AUSENTE')
+        db.select(Evaluation).where(eval_scope, Evaluation.grado_levine != 'AUSENTE')
     ).scalars().all()
 
     raza_map: dict = {}
@@ -514,7 +658,7 @@ def get_dashboard():
     # --- Confianza promedio por grado ---
     confianza_raw = db.session.execute(
         db.select(Evaluation.grado_levine, func.avg(Evaluation.confianza_modelo))
-        .where(Evaluation.confianza_modelo.isnot(None))
+        .where(eval_scope, Evaluation.confianza_modelo.isnot(None))
         .group_by(Evaluation.grado_levine)
     ).all()
     confianza_por_grado = [
@@ -523,13 +667,13 @@ def get_dashboard():
     ]
     confianza_general_raw = db.session.execute(
         db.select(func.avg(Evaluation.confianza_modelo))
-        .where(Evaluation.confianza_modelo.isnot(None))
+        .where(eval_scope, Evaluation.confianza_modelo.isnot(None))
     ).scalar()
     confianza_general = round((confianza_general_raw or 0) * 100, 1)
 
     # --- Evaluaciones recientes ---
     recent_evals = db.session.execute(
-        db.select(Evaluation).order_by(Evaluation.fecha.desc()).limit(5)
+        db.select(Evaluation).where(eval_scope).order_by(Evaluation.fecha.desc()).limit(5)
     ).scalars().all()
     recent_list = []
     for e in recent_evals:
@@ -551,7 +695,7 @@ def get_dashboard():
         db.select(Owner.distrito, Evaluation.grado_levine, func.count(Evaluation.id))
         .join(Dog, Dog.owner_id == Owner.id)
         .join(Evaluation, Evaluation.dog_id == Dog.id)
-        .where(Evaluation.grado_levine != 'AUSENTE')
+        .where(Owner.clinic_id == cid, Evaluation.grado_levine != 'AUSENTE')
         .group_by(Owner.distrito, Evaluation.grado_levine)
     ).all()
 
@@ -589,7 +733,7 @@ def get_dashboard():
 @jwt_required() # Permitir que ambos roles vean el historial
 def get_evaluations_for_dog(dog_id):
     """Obtiene todas las evaluaciones de un perro específico."""
-    dog = db.session.get(Dog, dog_id)
+    dog = get_dog_scoped(dog_id)
     if not dog:
         return jsonify({"msg": "Perro no encontrado"}), 404
     
@@ -605,3 +749,126 @@ def get_evaluations_for_dog(dog_id):
         }
         for e in evals
     ]), 200
+
+
+# ===================================================
+# --- Equipo de la clínica (solo administrador) ---
+# ===================================================
+# Una cuenta puede pertenecer a varias clínicas. Cada clínica solo ve a sus
+# propios integrantes y nunca sabe si una persona trabaja en otra clínica.
+
+INVITE_TTL = datetime.timedelta(days=7)
+
+def serialize_member(m: ClinicMembership):
+    return {"id": m.user.id, "username": m.user.username, "email": m.user.email, "role": m.role}
+
+def serialize_invitation(inv: ClinicInvitation):
+    return {
+        "id": inv.id, "email": inv.email, "role": inv.role,
+        "createdAt": inv.created_at.isoformat(), "expiresAt": inv.expires_at.isoformat(),
+    }
+
+@api.route('/users', methods=['GET'])
+@role_required('administrador')
+def list_users():
+    members = db.session.execute(
+        db.select(ClinicMembership).join(User)
+        .where(ClinicMembership.clinic_id == current_clinic_id()).order_by(User.username)
+    ).scalars().all()
+    return jsonify([serialize_member(m) for m in members]), 200
+
+@api.route('/users/<int:user_id>', methods=['DELETE'])
+@role_required('administrador')
+def remove_user(user_id):
+    """Quita a la persona de ESTA clínica. Su cuenta y sus otras clínicas no se tocan."""
+    membership = db.session.execute(
+        db.select(ClinicMembership).filter_by(user_id=user_id, clinic_id=current_clinic_id())
+    ).scalar_one_or_none()
+    if not membership:
+        return jsonify({"msg": "Integrante no encontrado"}), 404
+    if str(user_id) == get_jwt().get('sub'):
+        return jsonify({"msg": "No puedes quitarte a ti mismo"}), 400
+    if membership.role == 'administrador':
+        return jsonify({"msg": "No se puede quitar a un administrador"}), 400
+    db.session.delete(membership)
+    db.session.commit()
+    return jsonify({"msg": "Integrante quitado de la clínica"}), 200
+
+@api.route('/invitations', methods=['GET'])
+@role_required('administrador')
+def list_invitations():
+    invs = db.session.execute(
+        db.select(ClinicInvitation).where(
+            ClinicInvitation.clinic_id == current_clinic_id(),
+            ClinicInvitation.accepted_at.is_(None),
+            ClinicInvitation.expires_at > datetime.datetime.utcnow(),
+        ).order_by(ClinicInvitation.created_at.desc())
+    ).scalars().all()
+    return jsonify([serialize_invitation(i) for i in invs]), 200
+
+@api.route('/invitations', methods=['POST'])
+@role_required('administrador')
+def create_invitation():
+    data = request.get_json(silent=True) or {}
+    email = (data.get('email') or '').strip().lower()
+    role = data.get('role')
+    if '@' not in email or len(email) > 120:
+        return jsonify({"msg": "Correo inválido"}), 400
+    if role not in ("asistente", "veterinario"):
+        return jsonify({"msg": "Rol inválido"}), 400
+
+    clinic_id = current_clinic_id()
+    # Solo se informa sobre la PROPIA clínica; nada sobre otras clínicas
+    ya_miembro = db.session.execute(
+        db.select(ClinicMembership.id).join(User)
+        .where(ClinicMembership.clinic_id == clinic_id, User.email == email)
+    ).first()
+    if ya_miembro:
+        return jsonify({"msg": "Esa persona ya es integrante de tu clínica"}), 409
+
+    token = secrets.token_urlsafe(32)
+    now = datetime.datetime.utcnow()
+    inv = db.session.execute(
+        db.select(ClinicInvitation).where(
+            ClinicInvitation.clinic_id == clinic_id,
+            ClinicInvitation.email == email,
+            ClinicInvitation.accepted_at.is_(None),
+        )
+    ).scalars().first()
+    if inv:  # reenviar: nuevo enlace y nueva vigencia (el anterior deja de servir)
+        inv.role = role
+        inv.created_at = now
+    else:
+        inv = ClinicInvitation(clinic_id=clinic_id, email=email, role=role, invited_by=int(get_jwt()['sub']))
+        db.session.add(inv)
+    inv.token_hash = hash_invite_token(token)
+    inv.expires_at = now + INVITE_TTL
+    db.session.commit()
+
+    clinic = db.session.get(Clinic, clinic_id)
+    rol_txt = "veterinario(a)" if role == "veterinario" else "asistente"
+    link = f"{current_app.config['FRONTEND_URL'].rstrip('/')}/invitacion?token={token}"
+    try:
+        send_email(
+            email,
+            f"Invitación de {clinic.nombre} - Sistema de Gestión Veterinaria",
+            f"Hola,\n\n{clinic.nombre} te invitó a unirte como {rol_txt}.\n\n"
+            f"Acepta la invitación aquí (válida por 7 días):\n{link}\n\n"
+            "Si ya tienes una cuenta, solo confirma con tu contraseña. Si no esperabas este correo, ignóralo.",
+        )
+    except Exception:
+        current_app.logger.exception("Error enviando invitación")
+        return jsonify({"msg": "No se pudo enviar el correo de invitación. Intenta de nuevo."}), 502
+
+    # Misma respuesta exista o no una cuenta con ese correo
+    return jsonify({"msg": f"Invitación enviada a {email}", "invitation": serialize_invitation(inv)}), 201
+
+@api.route('/invitations/<int:inv_id>', methods=['DELETE'])
+@role_required('administrador')
+def revoke_invitation(inv_id):
+    inv = db.session.get(ClinicInvitation, inv_id)
+    if not inv or inv.clinic_id != current_clinic_id() or inv.accepted_at:
+        return jsonify({"msg": "Invitación no encontrada"}), 404
+    db.session.delete(inv)
+    db.session.commit()
+    return jsonify({"msg": "Invitación cancelada"}), 200
