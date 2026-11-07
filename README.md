@@ -130,7 +130,7 @@ Variables del `.env`:
 | `FRONTEND_PORT` / `BACKEND_PORT` | Puertos del servidor a los que apunta NPM | `7000` / `9000` |
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | Credenciales de PostgreSQL | usa una contraseña fuerte |
 | `SECRET_KEY` / `JWT_SECRET_KEY` | Claves secretas (largas y aleatorias) | ver comando abajo |
-| `FRONTEND_URL` | URL pública de la web (para los enlaces de invitación) | `https://vet.tudominio.com` |
+| `FRONTEND_URL` | **Obligatoria.** URL pública de la web, **sin barra final**. El backend solo acepta peticiones desde este dominio (CORS) y la usa en los enlaces de invitación | `https://vet.tudominio.com` |
 | `SMTP_*` | Servidor de correo (opcional, ver [Correo](#-correo-smtp)) | — |
 
 Para generar claves secretas seguras:
@@ -292,7 +292,7 @@ docker compose start backend
 |---|---|
 | No puedo iniciar sesión con ningún usuario | La base está vacía: ejecuta `seed_users.py` ([ver arriba](#-datos-de-prueba-seeds)) |
 | `port is already allocated` | Otro programa usa el puerto 3000, 5000 o 5432. Ciérralo o cambia el puerto en el compose |
-| La web carga pero dice *"No se pudo conectar con el servidor"* | `NEXT_PUBLIC_API_BASE_URL` apunta a una URL incorrecta. Corrígela y reconstruye el frontend |
+| La web carga pero dice *"No se pudo conectar con el servidor"* | `NEXT_PUBLIC_API_BASE_URL` apunta a una URL incorrecta (corrígela y reconstruye el frontend), o `FRONTEND_URL` no coincide con el dominio de la web y el navegador bloquea las peticiones por CORS (corrígela y reinicia el backend) |
 | El backend se reinicia en bucle | Revisa `docker logs veterinaria_backend`. Suele ser una variable faltante en `.env` o la BD aún arrancando |
 | El análisis de audio da *timeout* en producción | Falta la configuración de timeouts en el Proxy Host de la API (ver paso 4 de producción) |
 | No llegan los correos de invitación | No hay SMTP configurado: toma el enlace de los logs ([ver Correo](#-correo-smtp)) |
